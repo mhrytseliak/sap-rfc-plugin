@@ -1,9 +1,14 @@
 {
   "name": "sap-rfc-marketplace",
+  "version": "1.0.0",
   "description": "SAP RFC plugin for Claude Code — MCP server with read-only SAP tools and connection management skills",
   "owner": {
     "name": "Mykola Hrytseliak",
     "email": "mhrytseliak@gmail.com"
+  },
+  "metadata": {
+    "last_updated": "2026-04-07",
+    "total_plugins": 1
   },
   "plugins": [
     {

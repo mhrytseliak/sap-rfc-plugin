@@ -1,6 +1,6 @@
 {
   "name": "sap-rfc",
-  "version": "3.0.1",
+  "version": "1.0.0",
   "description": "SAP RFC MCP server with read-only tools and connection management skills for Claude Code",
   "author": {
     "name": "Mykola Hrytseliak",
