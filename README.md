@@ -23,7 +23,7 @@ Restart Claude Code after install.
 ```
 /sap-connect
 ```
-Walks you through selecting a system (from SAP Logon landscape XML or manual entry), entering credentials, and registering the MCP server.
+Walks you through selecting a system (from SAP Logon landscape XML or manual entry), entering credentials, and registering the MCP server. Password is collected via a secure popup dialog — it never appears in the conversation.
 
 ### Switch system
 ```

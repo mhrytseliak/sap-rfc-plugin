@@ -26,7 +26,9 @@ user_invocable: true
 
 6. **Collect password securely via GUI dialog** — do NOT use AskUserQuestion for passwords (values appear in plain text in chat history). Claude Code's Bash and `!` prefix both run non-interactively, so `read -s`, `getpass`, and `input()` do not work.
 
-   Instead, launch the tkinter password dialog that lives next to this skill file. Find its path and run:
+   Tell the user: **"A password dialog will open on your screen — enter your SAP password there. The password never appears in the conversation."**
+
+   Then launch the tkinter password dialog that lives next to this skill file. Find its path and run:
    ```bash
    python -c "
    import subprocess, keyring, sys, glob

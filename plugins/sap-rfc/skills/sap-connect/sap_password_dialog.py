@@ -1,72 +1,103 @@
-"""SAP password dialog — tkinter GUI for secure password entry."""
+"""SAP password dialog — near terminal line, plain dark style."""
 import sys
 import tkinter as tk
 
+BG = "#0c0c0c"
+FG = "#cccccc"
+FONT = ("Menlo" if sys.platform == "darwin" else "Consolas", 10)
+
+
+def _dark_title_bar(root):
+    try:
+        import ctypes
+        root.update()
+        hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, 20, ctypes.byref(ctypes.c_int(1)), 4
+        )
+    except Exception:
+        pass
+
+
+def _center_on_cursor_monitor(root, w, h):
+    """Center on the monitor where the cursor is."""
+    px, py = root.winfo_pointerxy()
+    try:
+        import ctypes
+        import ctypes.wintypes as wt
+
+        class MONITORINFO(ctypes.Structure):
+            _fields_ = [("cbSize", wt.DWORD),
+                        ("rcMonitor", wt.RECT),
+                        ("rcWork", wt.RECT),
+                        ("dwFlags", wt.DWORD)]
+
+        pt = wt.POINT(px, py)
+        hmon = ctypes.windll.user32.MonitorFromPoint(pt, 2)  # NEAREST
+        mi = MONITORINFO()
+        mi.cbSize = ctypes.sizeof(MONITORINFO)
+        ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(mi))
+        rc = mi.rcWork
+        x = rc.left + (rc.right - rc.left - w) // 2
+        y = rc.top + (rc.bottom - rc.top - h) // 2
+    except Exception:
+        # Fallback: center near cursor
+        x = max(0, px - w // 2)
+        y = max(0, py - h // 2)
+    root.geometry(f"{w}x{h}+{x}+{y}")
+
 
 def main():
-    username = sys.argv[1] if len(sys.argv) > 1 else "SAP User"
+    user = sys.argv[1] if len(sys.argv) > 1 else "SAP User"
+    result = {"pw": None}
 
     root = tk.Tk()
     root.title("SAP Connection")
+    root.configure(bg=BG)
     root.resizable(False, False)
     root.attributes("-topmost", True)
+    root.protocol("WM_DELETE_WINDOW", root.destroy)
 
-    # Center on screen
-    w, h = 360, 140
-    x = (root.winfo_screenwidth() - w) // 2
-    y = (root.winfo_screenheight() - h) // 2
-    root.geometry(f"{w}x{h}+{x}+{y}")
+    _center_on_cursor_monitor(root, 360, 120)
+    _dark_title_bar(root)
 
-    # Remove minimize/maximize buttons (Windows)
-    root.protocol("WM_DELETE_WINDOW", lambda: _cancel(root))
+    # Force focus
+    root.focus_force()
+    root.lift()
 
-    result = {"password": None}
+    tk.Label(root, text=f"Password for {user}:", font=FONT,
+             bg=BG, fg=FG).pack(padx=16, pady=(14, 4), anchor="w")
 
-    # Label
-    label = tk.Label(root, text=f"Enter password for {username}:", font=("Segoe UI", 10))
-    label.pack(padx=20, pady=(16, 4), anchor="w")
-
-    # Password entry
-    entry = tk.Entry(root, show="\u2022", width=38, font=("Segoe UI", 10))
-    entry.pack(padx=20, pady=(0, 12))
+    entry = tk.Entry(root, show="*", width=40, font=FONT,
+                     bg="#1a1a1a", fg="#ffffff", insertbackground=FG,
+                     relief="flat")
+    entry.pack(padx=16, pady=(0, 10))
     entry.focus_set()
 
-    # Buttons frame
-    btn_frame = tk.Frame(root)
-    btn_frame.pack(padx=20, pady=(0, 12), anchor="e")
+    bf = tk.Frame(root, bg=BG)
+    bf.pack(padx=16, anchor="e")
 
-    ok_btn = tk.Button(
-        btn_frame, text="OK", width=10, font=("Segoe UI", 9),
-        command=lambda: _ok(root, entry, result),
-    )
-    ok_btn.pack(side="left", padx=(0, 8))
+    def ok():
+        result["pw"] = entry.get()
+        root.destroy()
 
-    cancel_btn = tk.Button(
-        btn_frame, text="Cancel", width=10, font=("Segoe UI", 9),
-        command=lambda: _cancel(root),
-    )
-    cancel_btn.pack(side="left")
+    tk.Button(bf, text="OK", width=8, font=FONT, bg="#333333", fg=FG,
+              activebackground="#444444", relief="flat",
+              command=ok).pack(side="left", padx=(0, 6))
 
-    # Key bindings
-    root.bind("<Return>", lambda e: _ok(root, entry, result))
-    root.bind("<Escape>", lambda e: _cancel(root))
+    tk.Button(bf, text="Cancel", width=8, font=FONT, bg="#222222", fg="#888888",
+              activebackground="#333333", relief="flat",
+              command=root.destroy).pack(side="left")
 
+    root.bind("<Return>", lambda e: ok())
+    root.bind("<Escape>", lambda e: root.destroy())
     root.mainloop()
 
-    if result["password"] is not None:
-        print(result["password"])
+    if result["pw"] is not None:
+        print(result["pw"])
         sys.exit(0)
     else:
         sys.exit(1)
-
-
-def _ok(root, entry, result):
-    result["password"] = entry.get()
-    root.destroy()
-
-
-def _cancel(root):
-    root.destroy()
 
 
 if __name__ == "__main__":
