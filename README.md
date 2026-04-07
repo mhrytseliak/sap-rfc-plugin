@@ -23,7 +23,9 @@ Restart Claude Code after install.
 ```
 /sap-connect
 ```
-Walks you through selecting a system (from SAP Logon landscape XML or manual entry), entering credentials, and registering the MCP server. Password is collected via a secure popup dialog — it never appears in the conversation.
+Walks you through selecting a system (from SAP Logon landscape XML or manual entry), then opens an SAP GUI-style logon dialog for client, user, password, and language. Credentials go straight to the OS keyring — password never appears in the conversation.
+
+> **Multi-monitor:** On Windows, the dialog centers on the monitor where your cursor is. On Mac/Linux, it appears near the cursor.
 
 ### Switch system
 ```

@@ -20,53 +20,37 @@ user_invocable: true
    - SAP application server host (IP or hostname)
    - System number (00, 01, etc.)
 
-4. Use AskUserQuestion to ask for SAP **client number** (offer common options: 100, 200, 300, or Other).
+4. **Collect credentials via SAP Logon dialog.** Tell the user: **"An SAP Logon dialog will open on your screen — enter your credentials there. Password never appears in the conversation."**
 
-5. Use AskUserQuestion to ask for SAP **username** — do NOT pre-fill guesses. Offer only two generic options like "Type username below" and "Skip". The user types their actual username in the "Other" field.
-
-6. **Collect password securely via GUI dialog** — do NOT use AskUserQuestion for passwords (values appear in plain text in chat history). Claude Code's Bash and `!` prefix both run non-interactively, so `read -s`, `getpass`, and `input()` do not work.
-
-   Tell the user: **"A password dialog will open on your screen — enter your SAP password there. The password never appears in the conversation."**
-
-   Then launch the tkinter password dialog that lives next to this skill file. Find its path and run:
+   Then launch the logon dialog. Find its path via `glob` and run:
    ```bash
    python -c "
-   import subprocess, keyring, sys, glob
-   scripts = glob.glob(r'C:/Users/*/.claude/plugins/**/sap-connect/sap_password_dialog.py', recursive=True)
-   if not scripts:
-       scripts = glob.glob(r'/Users/*/.claude/plugins/**/sap-connect/sap_password_dialog.py', recursive=True)
-   dialog = scripts[0]
-   result = subprocess.run([sys.executable, dialog, '<USER>'], capture_output=True, text=True)
-   pwd = result.stdout.strip()
-   if result.returncode == 0 and pwd:
-       keyring.set_password('sap-rfc', 'passwd', pwd)
-       print('Password stored in keyring.')
+   import subprocess, keyring, sys, os, glob
+   paths = glob.glob(os.path.expanduser('~/.claude/plugins/**/sap-connect/sap_logon_dialog.py'), recursive=True)
+   dialog = paths[0]
+   result = subprocess.run([sys.executable, dialog, '<SYSTEM_NAME>'], capture_output=True, text=True)
+   if result.returncode == 0 and result.stdout.strip():
+       client, user, passwd, lang = result.stdout.strip().split('|', 3)
+       keyring.set_password('sap-rfc', 'ashost', '<host>')
+       keyring.set_password('sap-rfc', 'sysnr', '<sysnr>')
+       keyring.set_password('sap-rfc', 'client', client)
+       keyring.set_password('sap-rfc', 'user', user)
+       keyring.set_password('sap-rfc', 'passwd', passwd)
+       keyring.set_password('sap-rfc', 'lang', lang)
+       print(f'Credentials stored for {user} on client {client}.')
    else:
-       print('Password entry cancelled.')
+       print('Logon cancelled.')
    "
    ```
-   Replace `<USER>` with the actual username from step 5. The password is entered in a masked GUI popup (cross-platform tkinter) and stored directly to the encrypted keyring — it never appears in the conversation.
+   Replace `<SYSTEM_NAME>` with the system name from step 2/3 (e.g. "DW DEV"). Replace `<host>` and `<sysnr>` with values from step 2d/3. The dialog collects client, user, password (masked), and language in one window. Credentials go straight to the encrypted OS keyring.
 
-7. **Store remaining credentials in OS keyring** (password was already stored in step 6):
-   ```bash
-   python -c "
-   import keyring
-   keyring.set_password('sap-rfc', 'ashost', '<host>')
-   keyring.set_password('sap-rfc', 'sysnr', '<sysnr>')
-   keyring.set_password('sap-rfc', 'client', '<client>')
-   keyring.set_password('sap-rfc', 'user', '<user>')
-   keyring.set_password('sap-rfc', 'lang', 'EN')
-   "
-   ```
-   This stores credentials in Windows Credential Manager (encrypted, tied to the current user).
-
-8. Find the plugin's server.py path. It lives inside the installed plugin cache at:
+5. Find the plugin's server.py path. It lives inside the installed plugin cache at:
    `~/.claude/plugins/cache/sap-rfc-marketplace/sap-rfc/<version>/server/server.py`
    Use `glob ~/.claude/plugins/cache/sap-rfc-marketplace/sap-rfc/*/server/server.py` to find the exact path.
 
-9. Register the MCP server:
+6. Register the MCP server:
    ```bash
    claude mcp add sap-rfc --scope user -- python "<resolved-server-path>"
    ```
 
-10. Tell the user: "SAP connection configured for **<Name> (<SID>)**. Credentials stored in Windows Credential Manager. Restart Claude Code or run `/mcp` to activate. Then use `sap_ping` to test."
+7. Tell the user: "SAP connection configured for **<Name> (<SID>)**. Credentials stored securely. Restart Claude Code or run `/mcp` to activate. Then use `sap_ping` to test."
