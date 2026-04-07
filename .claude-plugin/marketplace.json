@@ -1,0 +1,17 @@
+{
+  "name": "sap-rfc-marketplace",
+  "description": "SAP RFC plugin for Claude Code — MCP server with read-only SAP tools and connection management skills",
+  "owner": {
+    "name": "Mykola Hrytseliak",
+    "email": "mhrytseliak@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "sap-rfc",
+      "source": "./plugins/sap-rfc",
+      "description": "SAP RFC MCP server (pyrfc + FastMCP) with 6 read-only tools and connection management skills",
+      "category": "development",
+      "tags": ["sap", "abap", "rfc", "mcp"]
+    }
+  ]
+}
