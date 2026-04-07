@@ -14,9 +14,14 @@ def _dark_title_bar(root):
         import ctypes
         root.update()
         hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
-        ctypes.windll.dwmapi.DwmSetWindowAttribute(
-            hwnd, 20, ctypes.byref(ctypes.c_int(1)), 4
-        )
+        dwm = ctypes.windll.dwmapi.DwmSetWindowAttribute
+        val = ctypes.byref(ctypes.c_int(1))
+        # Attr 20 = Win11 / Win10 18985+, attr 19 = older Win10 builds
+        if dwm(hwnd, 20, val, 4) != 0:
+            dwm(hwnd, 19, val, 4)
+        # Force redraw to apply
+        root.withdraw()
+        root.deiconify()
     except Exception:
         pass
 
