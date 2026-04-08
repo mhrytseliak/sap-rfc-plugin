@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1 (2026-04-08)
+
+### Features
+- **`sap_update_program`** — write tool to update ABAP program/include source code via `RPY_INCLUDE_UPDATE`. Saves as inactive by default to prevent runtime dumps from syntax errors.
+
 ## 1.0.0 (2026-04-07)
 
 Initial public release.

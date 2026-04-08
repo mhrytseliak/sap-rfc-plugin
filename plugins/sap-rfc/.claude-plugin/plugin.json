@@ -1,7 +1,7 @@
 {
   "name": "sap-rfc",
-  "version": "1.0.0",
-  "description": "SAP RFC MCP server with read-only tools and connection management skills for Claude Code",
+  "version": "1.0.1",
+  "description": "SAP RFC MCP server with read/write tools and connection management skills for Claude Code",
   "author": {
     "name": "Mykola Hrytseliak",
     "email": "mhrytseliak@gmail.com"

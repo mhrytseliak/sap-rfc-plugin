@@ -1,20 +1,20 @@
 {
   "name": "sap-rfc-marketplace",
-  "version": "1.0.0",
-  "description": "SAP RFC plugin for Claude Code — MCP server with read-only SAP tools and connection management skills",
+  "version": "1.0.1",
+  "description": "SAP RFC plugin for Claude Code — MCP server with read/write SAP tools and connection management skills",
   "owner": {
     "name": "Mykola Hrytseliak",
     "email": "mhrytseliak@gmail.com"
   },
   "metadata": {
-    "last_updated": "2026-04-07",
+    "last_updated": "2026-04-08",
     "total_plugins": 1
   },
   "plugins": [
     {
       "name": "sap-rfc",
       "source": "./plugins/sap-rfc",
-      "description": "SAP RFC MCP server (pyrfc + FastMCP) with 6 read-only tools and connection management skills",
+      "description": "SAP RFC MCP server (pyrfc + FastMCP) with 7 read/write tools and connection management skills",
       "category": "development",
       "tags": ["sap", "abap", "rfc", "mcp"]
     }

@@ -1,6 +1,6 @@
 # sap-rfc-plugin
 
-Claude Code plugin for SAP systems via RFC. Provides an MCP server with read-only SAP tools and connection management skills.
+Claude Code plugin for SAP systems via RFC. Provides an MCP server with read/write SAP tools and connection management skills.
 
 ## Prerequisites
 
@@ -55,6 +55,24 @@ Once connected, these tools are available:
 | `sap_read_program` | Read ABAP report source + includes + text elements |
 | `sap_read_fm_interface` | FM interface + optional source code (`with_source=True`) |
 | `sap_read_class` | List class methods or read method source |
+| `sap_update_program` | Update ABAP program/include source code (saves inactive by default) |
+
+### `sap_update_program`
+
+Updates ABAP program or include source code in SAP via `RPY_INCLUDE_UPDATE`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `program_name` | str | required | Program or include name |
+| `source` | str | required | Full source code |
+| `title` | str | None | Program title (auto-detected if omitted) |
+| `save_inactive` | bool | True | Save as inactive version |
+
+**Write operation:** Always confirm with the user before calling this tool. On error — show the error and wait for instructions, don't auto-retry.
+
+**Inactive by default:** To prevent runtime dumps from syntax errors, the tool saves programs as inactive. Activate manually in SE38 or pass `save_inactive=False`.
+
+**Transport requirement:** The program must already be in an open transport. If not, you'll get `DYNPRO_SEND_IN_BACKGROUND`. Fix: add the program to a transport in SE01/SE09, then retry.
 
 ## Credentials
 

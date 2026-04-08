@@ -330,5 +330,48 @@ def sap_read_class(
         return {"error": type(e).__name__, "detail": str(e)}
 
 
+@mcp.tool()
+def sap_update_program(
+    program_name: str,
+    source: str,
+    title: str | None = None,
+    save_inactive: bool = True,
+) -> dict:
+    """Update ABAP program/include source code in SAP.
+    Saves as inactive by default to prevent runtime dumps from syntax errors.
+    Set save_inactive=False to activate immediately."""
+    from pyrfc import ABAPApplicationError
+    try:
+        conn = get_connection()
+        name = program_name.upper()
+
+        if not title:
+            try:
+                prog = conn.call("RPY_PROGRAM_READ", PROGRAM_NAME=name)
+                title = prog.get("PROG_INF", {}).get("TITLE", name)
+            except Exception:
+                title = name
+
+        source_lines = [{"LINE": line} for line in source.split("\n")]
+
+        params = {
+            "INCLUDE_NAME": name,
+            "TITLE_STRING": title,
+            "SOURCE_EXTENDED": source_lines,
+        }
+        if save_inactive:
+            params["SAVE_INACTIVE"] = "I"
+
+        conn.call("RPY_INCLUDE_UPDATE", **params)
+        conn.close()
+
+        return {"status": "ok", "program": name, "inactive": save_inactive}
+
+    except ABAPApplicationError as e:
+        return {"status": "error", "error": e.key, "message": e.message}
+    except Exception as e:
+        return {"status": "error", "error": type(e).__name__, "message": str(e)}
+
+
 if __name__ == "__main__":
     mcp.run()
