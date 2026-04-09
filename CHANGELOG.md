@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 (2026-04-09)
+
+### Features
+- **File-based source output** — `sap_read_program`, `sap_read_fm_interface`, `sap_read_class` write source to `.abap` files in a temp cache dir and return `source_file` path + `line_count` instead of inline source. Saves thousands of tokens per call.
+- **File-based source input** — `sap_update_program` accepts `source_file` (path) as alternative to `source` (string), preventing token waste on timeouts.
+- Temp cache auto-cleans on server shutdown.
+
 ## 1.0.1 (2026-04-08)
 
 ### Features

@@ -52,10 +52,10 @@ Once connected, these tools are available:
 | `sap_ping` | Test connection, get system info |
 | `sap_get_fields` | Table field definitions (supports `fields` filter, `keys_only`) |
 | `sap_read_table` | Read up to 20 rows from any table |
-| `sap_read_program` | Read ABAP report source + includes + text elements |
-| `sap_read_fm_interface` | FM interface + optional source code (`with_source=True`) |
-| `sap_read_class` | List class methods or read method source |
-| `sap_update_program` | Update ABAP program/include source code (saves inactive by default) |
+| `sap_read_program` | Read ABAP report — writes `.abap` file, returns path + line count |
+| `sap_read_fm_interface` | FM interface + optional source file (`with_source=True`) |
+| `sap_read_class` | List class methods or read method source to file |
+| `sap_update_program` | Update ABAP source — accepts `source` string or `source_file` path |
 
 ### `sap_update_program`
 
@@ -64,7 +64,8 @@ Updates ABAP program or include source code in SAP via `RPY_INCLUDE_UPDATE`.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `program_name` | str | required | Program or include name |
-| `source` | str | required | Full source code |
+| `source` | str | None | Full source code (provide this OR `source_file`) |
+| `source_file` | str | None | Path to `.abap` file (provide this OR `source`) |
 | `title` | str | None | Program title (auto-detected if omitted) |
 | `save_inactive` | bool | True | Save as inactive version |
 

@@ -16,6 +16,8 @@ A Claude Code plugin (`sap-rfc`) that provides an MCP server for SAP RFC connect
 
 ## Key Design Decisions
 
+- **File-based source output**: Tools that return ABAP source (`sap_read_program`, `sap_read_fm_interface`, `sap_read_class`) write to `.abap` files in a temp cache dir and return `source_file` path + `line_count` instead of inline source. This saves tokens — Claude reads files via Read tool only when needed. Cache is cleaned up on server shutdown.
+- **File-based source input**: `sap_update_program` accepts `source_file` (path) as alternative to `source` (string). Using `source_file` prevents the full program text from appearing in the MCP tool call, avoiding token waste on timeouts.
 - **Connection per call**: No persistent connection pool. `get_connection()` creates a new `pyrfc.Connection` each time from keyring values.
 - **Hard row limit**: `sap_read_table` caps at 20 rows (`MAX_ROWS = 20`), enforced server-side.
 - **WHERE clause chunking**: Long WHERE strings are split into 72-char chunks (SAP RFC_READ_TABLE limit).

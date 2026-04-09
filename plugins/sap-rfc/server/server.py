@@ -1,5 +1,8 @@
-import os
+import atexit
+import shutil
+import tempfile
 import textwrap
+from pathlib import Path
 
 import keyring
 from fastmcp import FastMCP
@@ -10,6 +13,17 @@ KEYRING_KEYS = ("ashost", "sysnr", "client", "user", "passwd", "lang", "saproute
 mcp = FastMCP("sap-rfc")
 
 MAX_ROWS = 20
+
+CACHE_DIR = Path(tempfile.mkdtemp(prefix="sap-rfc-"))
+atexit.register(shutil.rmtree, str(CACHE_DIR), True)
+
+
+def _write_source(name: str, source: str) -> dict:
+    """Write source to cache file, return metadata."""
+    path = CACHE_DIR / f"{name}.abap"
+    path.write_text(source, encoding="utf-8")
+    lines = source.count("\n") + 1
+    return {"source_file": str(path), "line_count": lines}
 
 
 def get_connection():
@@ -185,7 +199,7 @@ def sap_read_program(
 
         return {
             "program": program_name.upper(),
-            "source": "\n".join(source_lines),
+            **_write_source(program_name.upper(), "\n".join(source_lines)),
             "includes": includes,
             "text_elements": texts,
         }
@@ -240,7 +254,7 @@ def sap_read_fm_interface(function_name: str, with_source: bool = False) -> dict
 
         if with_source:
             source_lines = [line.get("LINE", "") for line in result.get("SOURCE", [])]
-            out["source"] = "\n".join(source_lines)
+            out.update(_write_source(function_name.upper(), "\n".join(source_lines)))
 
         return out
 
@@ -317,11 +331,12 @@ def sap_read_class(
             for line in prog_result.get("SOURCE_EXTENDED", prog_result.get("SOURCE", []))
         ]
 
+        source_text = "\n".join(source_lines)
         return {
             "class": cls,
             "method": mtd,
             "include": include,
-            "source": "\n".join(source_lines),
+            **_write_source(f"{cls}.{mtd}", source_text),
         }
 
     except ABAPApplicationError as e:
@@ -333,14 +348,23 @@ def sap_read_class(
 @mcp.tool()
 def sap_update_program(
     program_name: str,
-    source: str,
+    source: str | None = None,
+    source_file: str | None = None,
     title: str | None = None,
     save_inactive: bool = True,
 ) -> dict:
     """Update ABAP program/include source code in SAP.
+    Provide source as string OR source_file as path to .abap file.
     Saves as inactive by default to prevent runtime dumps from syntax errors.
     Set save_inactive=False to activate immediately."""
     from pyrfc import ABAPApplicationError
+
+    if source_file:
+        source = Path(source_file).read_text(encoding="utf-8")
+    if not source:
+        return {"status": "error", "error": "ValueError",
+                "message": "Provide either source or source_file"}
+
     try:
         conn = get_connection()
         name = program_name.upper()
