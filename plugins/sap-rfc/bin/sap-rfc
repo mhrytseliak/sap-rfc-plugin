@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 """SAP RFC CLI — invoke SAP tools via command line, output JSON."""
-import atexit
 import argparse
 import json
-import shutil
 import sys
 import tempfile
 import textwrap
@@ -15,8 +13,8 @@ SERVICE_NAME = "sap-rfc"
 KEYRING_KEYS = ("ashost", "sysnr", "client", "user", "passwd", "lang", "saprouter")
 MAX_ROWS = 20
 
-CACHE_DIR = Path(tempfile.mkdtemp(prefix="sap-rfc-"))
-atexit.register(shutil.rmtree, str(CACHE_DIR), True)
+CACHE_DIR = Path(tempfile.gettempdir()) / "sap-rfc-cache"
+CACHE_DIR.mkdir(exist_ok=True)
 
 
 def _write_source(name: str, source: str) -> dict:
