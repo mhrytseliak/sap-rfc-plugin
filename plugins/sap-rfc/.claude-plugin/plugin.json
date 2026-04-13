@@ -1,12 +1,12 @@
 {
   "name": "sap-rfc",
-  "version": "1.1.0",
-  "description": "SAP RFC MCP server with read/write tools and connection management skills for Claude Code",
+  "version": "2.0.0",
+  "description": "SAP RFC CLI tools and connection management skills for Claude Code",
   "author": {
     "name": "Mykola Hrytseliak",
     "email": "mhrytseliak@gmail.com"
   },
   "license": "MIT",
   "repository": "https://github.com/mhrytseliak/sap-rfc-plugin",
-  "keywords": ["sap", "abap", "rfc", "mcp", "pyrfc"]
+  "keywords": ["sap", "abap", "rfc", "cli", "pyrfc"]
 }

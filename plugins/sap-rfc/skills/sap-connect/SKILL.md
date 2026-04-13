@@ -1,6 +1,6 @@
 ---
 name: sap-connect
-description: Connect to a SAP system — parse landscape XML or enter details manually, store credentials in OS keyring, register MCP server.
+description: Connect to a SAP system — parse landscape XML or enter details manually, store credentials in OS keyring.
 user_invocable: true
 ---
 
@@ -59,13 +59,13 @@ user_invocable: true
 
    The dialog returns `client|user|password|lang` on stdout. Password goes straight to the encrypted OS keyring — never in the conversation.
 
-5. **Register MCP server** (if not already registered). Find server.py path:
+5. **Test connection:**
    ```bash
-   glob ~/.claude/plugins/cache/sap-rfc-marketplace/sap-rfc/*/server/server.py
+   sap-rfc ping
    ```
-   Then register:
+   If the command is not found on PATH, use the full path:
    ```bash
-   claude mcp add sap-rfc --scope user -- python "<resolved-server-path>"
+   python ~/.claude/plugins/cache/sap-rfc-marketplace/sap-rfc/*/bin/sap-rfc ping
    ```
 
-6. Tell the user: "SAP connection configured for **<Name> (<SID>)**. Credentials stored securely. Restart Claude Code or run `/mcp` to activate. Then use `sap_ping` to test."
+6. Tell the user: "SAP connection configured for **<Name> (<SID>)**. Credentials stored securely. Tools are available immediately — no restart needed."
