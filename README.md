@@ -1,12 +1,12 @@
 # sap-rfc-plugin
 
-Claude Code plugin for SAP systems via RFC. Provides an MCP server with read/write SAP tools and connection management skills.
+Claude Code plugin for SAP systems via RFC. Provides CLI tools for reading/writing SAP objects and connection management skills.
 
 ## Prerequisites
 
 - Python 3.10+
 - [SAP NW RFC SDK](https://support.sap.com/en/product/connectors/nwrfcsdk.html) installed and on PATH
-- `pip install fastmcp pyrfc keyring`
+- `pip install pyrfc keyring`
 
 ## Install
 
@@ -14,8 +14,6 @@ Claude Code plugin for SAP systems via RFC. Provides an MCP server with read/wri
 claude plugin marketplace add mhrytseliak/sap-rfc-plugin
 claude plugin install sap-rfc
 ```
-
-Restart Claude Code after install.
 
 ## Usage
 
@@ -35,43 +33,44 @@ Supports SAP Router — systems that require a router connection are detected au
 ```
 /sap-change-connection
 ```
-Removes current credentials and MCP registration, then runs the connect flow for a new system.
+Removes current credentials, then runs the connect flow for a new system.
 
 ### Disconnect
 ```
 /sap-disconnect
 ```
-Removes MCP server registration and all credentials from the OS keyring.
+Removes all credentials from the OS keyring.
 
-## MCP Tools
+## CLI Tools
 
-Once connected, these tools are available:
+Once connected, these commands are available via Bash:
 
-| Tool | Description |
-|------|-------------|
-| `sap_ping` | Test connection, get system info |
-| `sap_get_fields` | Table field definitions (supports `fields` filter, `keys_only`) |
-| `sap_read_table` | Read up to 20 rows from any table |
-| `sap_read_program` | Read ABAP report — writes `.abap` file, returns path + line count |
-| `sap_read_fm_interface` | FM interface + optional source file (`with_source=True`) |
-| `sap_read_class` | List class methods or read method source to file |
-| `sap_update_program` | Update ABAP source — accepts `source` string or `source_file` path |
+| Command | Description |
+|---------|-------------|
+| `sap-rfc ping` | Test connection, get system info |
+| `sap-rfc get-fields <TABLE>` | Table field definitions (`--fields`, `--keys-only`) |
+| `sap-rfc read-table <TABLE>` | Read up to 20 rows (`--fields`, `--where`, `--max-rows`) |
+| `sap-rfc read-program <PROG>` | Read ABAP report — writes `.abap` file, returns path + line count |
+| `sap-rfc read-fm <FM>` | FM interface + optional source (`--with-source`) |
+| `sap-rfc read-class <CLASS>` | List methods or read method source (`--method`) |
+| `sap-rfc update-program <PROG>` | Update ABAP source (`--source` or `--source-file`) |
 
-### `sap_update_program`
+All output is JSON. The `bin/` directory is added to PATH automatically by the plugin system.
+
+### `sap-rfc update-program`
 
 Updates ABAP program or include source code in SAP via `RPY_INCLUDE_UPDATE`.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `program_name` | str | required | Program or include name |
-| `source` | str | None | Full source code (provide this OR `source_file`) |
-| `source_file` | str | None | Path to `.abap` file (provide this OR `source`) |
-| `title` | str | None | Program title (auto-detected if omitted) |
-| `save_inactive` | bool | True | Save as inactive version |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--source` | None | Full source code string |
+| `--source-file` | None | Path to `.abap` file |
+| `--title` | auto | Program title (auto-detected if omitted) |
+| `--activate` | off | Activate immediately (default: save inactive) |
 
-**Write operation:** Always confirm with the user before calling this tool. On error — show the error and wait for instructions, don't auto-retry.
+**Write operation:** Always confirm with the user before calling this command. On error — show the error and wait for instructions, don't auto-retry.
 
-**Inactive by default:** To prevent runtime dumps from syntax errors, the tool saves programs as inactive. Activate manually in SE38 or pass `save_inactive=False`.
+**Inactive by default:** To prevent runtime dumps from syntax errors, the tool saves programs as inactive. Activate manually in SE38 or pass `--activate`.
 
 **Transport requirement:** The program must already be in an open transport. If not, you'll get `DYNPRO_SEND_IN_BACKGROUND`. Fix: add the program to a transport in SE01/SE09, then retry.
 

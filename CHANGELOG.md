@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.0 (2026-04-13)
+
+### Changed
+- **Breaking:** Replaced MCP server with CLI script (`bin/sap-rfc`). Tools are now invoked via Bash instead of MCP protocol.
+- Removed `fastmcp` dependency.
+- Skills no longer register/unregister MCP server — just manage keyring credentials.
+- Plugin uses `bin/` directory for PATH integration.
+
+### Removed
+- `server/server.py` — MCP server
+- `server/requirements.txt`
+
 ## 1.1.0 (2026-04-09)
 
 ### Features
