@@ -1,0 +1,352 @@
+#!/usr/bin/env python
+"""SAP RFC CLI — invoke SAP tools via command line, output JSON."""
+import atexit
+import argparse
+import json
+import shutil
+import sys
+import tempfile
+import textwrap
+from pathlib import Path
+
+import keyring
+
+SERVICE_NAME = "sap-rfc"
+KEYRING_KEYS = ("ashost", "sysnr", "client", "user", "passwd", "lang", "saprouter")
+MAX_ROWS = 20
+
+CACHE_DIR = Path(tempfile.mkdtemp(prefix="sap-rfc-"))
+atexit.register(shutil.rmtree, str(CACHE_DIR), True)
+
+
+def _write_source(name: str, source: str) -> dict:
+    path = CACHE_DIR / f"{name}.abap"
+    path.write_text(source, encoding="utf-8")
+    lines = source.count("\n") + 1
+    return {"source_file": str(path), "line_count": lines}
+
+
+def get_connection():
+    from pyrfc import Connection
+
+    def _get(key):
+        return keyring.get_password(SERVICE_NAME, key)
+
+    ashost = _get("ashost")
+    if not ashost:
+        raise RuntimeError(
+            "SAP credentials not found in keyring. Run /sap-connect to configure."
+        )
+    params = {
+        "ashost": ashost,
+        "sysnr": _get("sysnr") or "00",
+        "client": _get("client") or "100",
+        "user": _get("user"),
+        "passwd": _get("passwd"),
+        "lang": _get("lang") or "EN",
+    }
+    saprouter = _get("saprouter")
+    if saprouter:
+        params["saprouter"] = saprouter
+    return Connection(**params)
+
+
+def cmd_ping(args):
+    from pyrfc import LogonError, CommunicationError
+    try:
+        conn = get_connection()
+        conn.call("RFC_PING")
+        sys_info = conn.call("RFC_SYSTEM_INFO")
+        info = sys_info["RFCSI_EXPORT"]
+        conn.close()
+        return {
+            "status": "ok",
+            "system_id": info.get("RFCSYSID", ""),
+            "host": info.get("RFCHOST", ""),
+            "database": info.get("RFCDBSYS", ""),
+            "sap_release": info.get("RFCSAPRL", ""),
+            "s4_hana": sys_info.get("S4_HANA", ""),
+        }
+    except LogonError as e:
+        return {"status": "error", "type": "LogonError", "message": str(e)}
+    except CommunicationError as e:
+        return {"status": "error", "type": "CommunicationError", "message": str(e)}
+    except Exception as e:
+        return {"status": "error", "type": type(e).__name__, "message": str(e)}
+
+
+def cmd_get_fields(args):
+    from pyrfc import ABAPApplicationError
+    try:
+        conn = get_connection()
+        result = conn.call("DDIF_FIELDINFO_GET", TABNAME=args.table.upper())
+        conn.close()
+        field_filter = {f.upper() for f in args.fields.split(",")} if args.fields else None
+        out = []
+        for f in result.get("DFIES_TAB", []):
+            if args.keys_only and f.get("KEYFLAG") != "X":
+                continue
+            if field_filter and f["FIELDNAME"] not in field_filter:
+                continue
+            out.append({
+                "field": f["FIELDNAME"],
+                "type": f["DATATYPE"],
+                "length": f["LENG"],
+                "decimals": f["DECIMALS"],
+                "key": f["KEYFLAG"] == "X",
+                "description": f.get("FIELDTEXT", ""),
+            })
+        return out
+    except ABAPApplicationError as e:
+        return {"error": f"Table '{args.table}' not found or no authorization", "detail": str(e)}
+    except Exception as e:
+        return {"error": type(e).__name__, "detail": str(e)}
+
+
+def cmd_read_table(args):
+    from pyrfc import ABAPApplicationError
+    max_rows = min(args.max_rows, MAX_ROWS)
+    try:
+        conn = get_connection()
+        params = {
+            "QUERY_TABLE": args.table.upper(),
+            "DELIMITER": "|",
+            "ROWCOUNT": max_rows,
+        }
+        if args.fields:
+            params["FIELDS"] = [{"FIELDNAME": f.upper()} for f in args.fields.split(",")]
+        if args.where:
+            chunks = textwrap.wrap(args.where, 72)
+            params["OPTIONS"] = [{"TEXT": c} for c in chunks]
+        result = conn.call("RFC_READ_TABLE", **params)
+        conn.close()
+        field_names = [f["FIELDNAME"] for f in result["FIELDS"]]
+        rows = []
+        for line in result["DATA"]:
+            values = [v.strip() for v in line["WA"].split("|")]
+            rows.append(dict(zip(field_names, values)))
+        return rows
+    except ABAPApplicationError as e:
+        return {"error": f"ABAP error on table '{args.table}'", "detail": str(e)}
+    except Exception as e:
+        return {"error": type(e).__name__, "detail": str(e)}
+
+
+def cmd_read_program(args):
+    try:
+        conn = get_connection()
+        result = conn.call(
+            "RPY_PROGRAM_READ",
+            PROGRAM_NAME=args.program.upper(),
+            WITH_INCLUDELIST="X" if not args.no_includes else "",
+            WITH_LOWERCASE="X",
+        )
+        conn.close()
+        source_lines = [line.get("LINE", "") for line in result.get("SOURCE_EXTENDED", result.get("SOURCE", []))]
+        includes = [
+            {"name": inc.get("INCLNAME", "").strip(), "title": inc.get("TITLE", "").strip()}
+            for inc in result.get("INCLUDE_TAB", [])
+            if inc.get("INCLNAME", "").strip()
+        ]
+        texts = [
+            {"id": t.get("ID", ""), "key": t.get("KEY", "").strip(), "entry": t.get("ENTRY", "").strip()}
+            for t in result.get("TEXTELEMENTS", [])
+        ]
+        return {
+            "program": args.program.upper(),
+            **_write_source(args.program.upper(), "\n".join(source_lines)),
+            "includes": includes,
+            "text_elements": texts,
+        }
+    except Exception as e:
+        return {"error": type(e).__name__, "detail": str(e)}
+
+
+def cmd_read_fm(args):
+    from pyrfc import ABAPApplicationError
+    try:
+        conn = get_connection()
+        result = conn.call("RPY_FUNCTIONMODULE_READ", FUNCTIONNAME=args.fm.upper())
+        conn.close()
+
+        def parse_params(table):
+            out = []
+            for p in result.get(table, []):
+                out.append({
+                    "name": p.get("PARAMETER", ""),
+                    "type": p.get("DBFIELD", "") or p.get("TYP", "") or p.get("EXID", ""),
+                    "optional": p.get("OPTIONAL", "") == "X",
+                    "default": p.get("DEFAULT", "").strip(),
+                    "description": p.get("STEXT", ""),
+                })
+            return out
+
+        params = {
+            "import": parse_params("IMPORT_PARAMETER"),
+            "export": parse_params("EXPORT_PARAMETER"),
+            "changing": parse_params("CHANGING_PARAMETER"),
+            "tables": parse_params("TABLES_PARAMETER"),
+            "exception": [
+                {"name": e.get("EXCEPTION", ""), "description": e.get("STEXT", "")}
+                for e in result.get("EXCEPTION_LIST", [])
+            ],
+        }
+        out = {
+            "function_module": args.fm.upper(),
+            "function_pool": result.get("FUNCTION_POOL", "").strip(),
+            "short_text": result.get("SHORT_TEXT", "").strip(),
+            "rfc_enabled": result.get("REMOTE_CALL", "") == "R",
+            "parameters": params,
+        }
+        if args.with_source:
+            source_lines = [line.get("LINE", "") for line in result.get("SOURCE", [])]
+            out.update(_write_source(args.fm.upper(), "\n".join(source_lines)))
+        return out
+    except ABAPApplicationError as e:
+        return {"error": f"FM '{args.fm}' not found", "detail": str(e)}
+    except Exception as e:
+        return {"error": type(e).__name__, "detail": str(e)}
+
+
+def cmd_read_class(args):
+    from pyrfc import ABAPApplicationError
+    try:
+        conn = get_connection()
+        cls = args.class_name.upper()
+        result = conn.call(
+            "RFC_READ_TABLE",
+            QUERY_TABLE="TMDIR",
+            DELIMITER="|",
+            FIELDS=[{"FIELDNAME": "METHODNAME"}, {"FIELDNAME": "METHODINDX"}],
+            OPTIONS=[{"TEXT": f"CLASSNAME EQ '{cls}'"}],
+            ROWCOUNT=100,
+        )
+        methods = {}
+        for line in result["DATA"]:
+            values = [v.strip() for v in line["WA"].split("|")]
+            name, index = values[0], values[1]
+            if name:
+                methods[name] = index
+        if not methods:
+            conn.close()
+            return {"error": f"Class '{cls}' not found or has no methods"}
+        if not args.method:
+            conn.close()
+            return {"class": cls, "methods": sorted(methods.keys())}
+        mtd = args.method.upper()
+        if mtd not in methods:
+            conn.close()
+            return {"error": f"Method '{mtd}' not found in class '{cls}'",
+                    "available_methods": sorted(methods.keys())}
+        padded = cls.ljust(30, "=")
+        idx = str(int(methods[mtd])).zfill(3)
+        include = f"{padded}CM{idx}"
+        prog_result = conn.call("RPY_PROGRAM_READ", PROGRAM_NAME=include, WITH_LOWERCASE="X")
+        conn.close()
+        source_lines = [
+            line.get("LINE", "")
+            for line in prog_result.get("SOURCE_EXTENDED", prog_result.get("SOURCE", []))
+        ]
+        return {
+            "class": cls,
+            "method": mtd,
+            "include": include,
+            **_write_source(f"{cls}.{mtd}", "\n".join(source_lines)),
+        }
+    except ABAPApplicationError as e:
+        return {"error": "ABAPApplicationError", "detail": str(e)}
+    except Exception as e:
+        return {"error": type(e).__name__, "detail": str(e)}
+
+
+def cmd_update_program(args):
+    from pyrfc import ABAPApplicationError
+    source = args.source
+    if args.source_file:
+        source = Path(args.source_file).read_text(encoding="utf-8")
+    if not source:
+        return {"status": "error", "error": "ValueError",
+                "message": "Provide either --source or --source-file"}
+    try:
+        conn = get_connection()
+        name = args.program.upper()
+        title = args.title
+        if not title:
+            try:
+                prog = conn.call("RPY_PROGRAM_READ", PROGRAM_NAME=name)
+                title = prog.get("PROG_INF", {}).get("TITLE", name)
+            except Exception:
+                title = name
+        source_lines = [{"LINE": line} for line in source.split("\n")]
+        params = {
+            "INCLUDE_NAME": name,
+            "TITLE_STRING": title,
+            "SOURCE_EXTENDED": source_lines,
+        }
+        if not args.activate:
+            params["SAVE_INACTIVE"] = "I"
+        conn.call("RPY_INCLUDE_UPDATE", **params)
+        conn.close()
+        return {"status": "ok", "program": name, "inactive": not args.activate}
+    except ABAPApplicationError as e:
+        return {"status": "error", "error": e.key, "message": e.message}
+    except Exception as e:
+        return {"status": "error", "error": type(e).__name__, "message": str(e)}
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="sap-rfc", description="SAP RFC CLI tools")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("ping", help="Test SAP connection")
+
+    p = sub.add_parser("get-fields", help="Get field definitions for a SAP table")
+    p.add_argument("table", help="Table name")
+    p.add_argument("--fields", help="Comma-separated field names to filter")
+    p.add_argument("--keys-only", action="store_true", help="Key fields only")
+
+    p = sub.add_parser("read-table", help="Read rows from a SAP table (max 20)")
+    p.add_argument("table", help="Table name")
+    p.add_argument("--fields", help="Comma-separated field names")
+    p.add_argument("--where", help="ABAP WHERE clause")
+    p.add_argument("--max-rows", type=int, default=20, help="Max rows (capped at 20)")
+
+    p = sub.add_parser("read-program", help="Read ABAP program source code")
+    p.add_argument("program", help="Program name")
+    p.add_argument("--no-includes", action="store_true", help="Skip include list")
+
+    p = sub.add_parser("read-fm", help="Read function module interface")
+    p.add_argument("fm", help="Function module name")
+    p.add_argument("--with-source", action="store_true", help="Include source code")
+
+    p = sub.add_parser("read-class", help="Read ABAP class methods")
+    p.add_argument("class_name", help="Class name")
+    p.add_argument("--method", help="Specific method to read source for")
+
+    p = sub.add_parser("update-program", help="Update ABAP program source")
+    p.add_argument("program", help="Program/include name")
+    p.add_argument("--source", help="Source code as string")
+    p.add_argument("--source-file", help="Path to .abap source file")
+    p.add_argument("--title", help="Program title")
+    p.add_argument("--activate", action="store_true", help="Activate immediately (default: save inactive)")
+
+    args = parser.parse_args()
+    dispatch = {
+        "ping": cmd_ping,
+        "get-fields": cmd_get_fields,
+        "read-table": cmd_read_table,
+        "read-program": cmd_read_program,
+        "read-fm": cmd_read_fm,
+        "read-class": cmd_read_class,
+        "update-program": cmd_update_program,
+    }
+    try:
+        result = dispatch[args.command](args)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    except Exception as e:
+        print(json.dumps({"error": type(e).__name__, "detail": str(e)}), file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
