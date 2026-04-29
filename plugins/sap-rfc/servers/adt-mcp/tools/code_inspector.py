@@ -44,44 +44,35 @@ def _parse_worklist(xml_text: str) -> tuple[list[dict], dict]:
         return findings, {"error_count": 0, "warning_count": 0, "info_count": 0}
     root = ET.fromstring(xml_text)
 
-    current_object: dict[str, str] = {}
     for el in root.iter():
         tag = el.tag.rsplit("}", 1)[-1]
+        if tag != "finding":
+            continue
         attrs = {k.rsplit("}", 1)[-1]: v for k, v in el.attrib.items()}
-        if tag == "object":
-            current_object = {
-                "name": attrs.get("name", ""),
-                "type": attrs.get("type", ""),
-                "package": attrs.get("packageName", ""),
-            }
-        elif tag == "finding":
-            uri = attrs.get("location", "") or attrs.get("uri", "")
-            m = _URI_POS_RE.search(uri)
-            line, col = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
-            prio_raw = attrs.get("priority", "")
-            try:
-                prio = int(prio_raw)
-            except ValueError:
-                prio = 0
-            # ATC priority 1/2 are errors, 3 warning, 4+ info.
-            if prio in (1, 2):
-                sev = "E"; err += 1
-            elif prio == 3:
-                sev = "W"; warn += 1
-            else:
-                sev = "I"; info += 1
-            findings.append({
-                "line": line,
-                "col": col,
-                "severity": sev,
-                "priority": prio,
-                "category": attrs.get("checkId", "") or attrs.get("category", ""),
-                "message": attrs.get("messageTitle", "").strip()
-                           or attrs.get("shortText", "").strip(),
-                "object_name": current_object.get("name", ""),
-                "object_type": current_object.get("type", ""),
-                "uri": uri,
-            })
+        uri = attrs.get("location", "") or attrs.get("uri", "")
+        m = _URI_POS_RE.search(uri)
+        line, col = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+        prio_raw = attrs.get("priority", "")
+        try:
+            prio = int(prio_raw)
+        except ValueError:
+            prio = 0
+        # ATC priority 1/2 are errors, 3 warning, 4+ info.
+        if prio in (1, 2):
+            sev = "E"; err += 1
+        elif prio == 3:
+            sev = "W"; warn += 1
+        else:
+            sev = "I"; info += 1
+        findings.append({
+            "line": line,
+            "col": col,
+            "severity": sev,
+            "priority": prio,
+            "category": attrs.get("checkId", "") or attrs.get("category", ""),
+            "message": attrs.get("messageTitle", "").strip()
+                       or attrs.get("shortText", "").strip(),
+        })
     return findings, {"error_count": err, "warning_count": warn, "info_count": info}
 
 
@@ -127,14 +118,12 @@ def _code_inspector_impl(name: str, kind: str, variant: str = "DEFAULT",
             )
         findings, summary = _parse_worklist(wlr.text)
         return {
-            "object": {"name": name.upper(), "kind": kind, "uri": obj_uri},
             "variant": variant,
-            "worklist_id": worklist_id,
             "findings": findings,
             "summary": summary,
         }
     except ADTNotAvailable as e:
-        return {"error": "ADTNotAvailable", "detail": str(e), "tried": e.tried}
+        return {"error": "ADTNotAvailable", "detail": str(e)}
     except ADTError as e:
         return {"error": "ADTError", "http_status": e.status,
                 "code": e.code, "message": e.message}
@@ -164,9 +153,8 @@ def register(mcp):
             max_verdicts: Cap on findings returned (SAP-side).
 
         Returns:
-            {object: {name, kind, uri}, variant, worklist_id,
-             findings: [{line, col, severity, priority, category, message,
-                         object_name, object_type, uri}],
+            {variant, findings: [{line, col, severity, priority, category,
+                                  message}],
              summary: {error_count, warning_count, info_count}}
             or {error: 'ADTNotAvailable'|'ADTError'|'ATCWorklistEmpty'|..., ...}.
         """

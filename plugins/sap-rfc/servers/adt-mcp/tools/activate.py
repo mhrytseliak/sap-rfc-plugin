@@ -95,15 +95,13 @@ def _activate_impl(objects: list[dict]) -> dict:
                 headers={"Content-Type": "application/xml"},
             )
         messages = _parse_messages(r.text)
-        errors = [m for m in messages if m["severity"] == "E"]
+        has_errors = any(m["severity"] == "E" for m in messages)
         return {
-            "status": "error" if errors else "ok",
-            "activated": [o["name"].upper() for o in objects] if not errors else [],
-            "errors": errors,
+            "status": "error" if has_errors else "ok",
             "messages": messages,
         }
     except ADTNotAvailable as e:
-        return {"error": "ADTNotAvailable", "detail": str(e), "tried": e.tried}
+        return {"error": "ADTNotAvailable", "detail": str(e)}
     except ADTError as e:
         return {"error": "ADTError", "http_status": e.status,
                 "code": e.code, "message": e.message}
@@ -129,7 +127,9 @@ def register(mcp):
                 omitted, auto-resolved via the include's contextRef (GET).
 
         Returns:
-            {status: 'ok'|'error', activated: [names], errors: [...], messages: [...]}
-            or {error: 'ADTNotAvailable'|'ADTError'|..., ...}.
+            {status: 'ok'|'error', messages: [{object, severity, message}]}
+            'status' = 'error' if any message has severity 'E'. Filter
+            messages by severity yourself if needed.
+            On failure: {error: 'ADTNotAvailable'|'ADTError'|..., ...}.
         """
         return _activate_impl(objects)

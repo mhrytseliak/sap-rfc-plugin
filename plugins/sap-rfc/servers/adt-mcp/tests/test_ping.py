@@ -51,4 +51,4 @@ def test_ping_maps_discovery_failure(monkeypatch, keyring_stub):
     monkeypatch.setattr("adt_client.discovery.find_adt_url", _boom)
     r = _ping_impl()
     assert r["error"] == "ADTNotAvailable"
-    assert r["tried"][0]["reason"] == "nope"
+    assert "nope" in r["detail"]

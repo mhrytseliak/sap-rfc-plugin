@@ -67,7 +67,6 @@ def test_transport_of_object_no_lock_returns_empty(base):
         status=200, body=NO_LOCK,
     )
     r = _transport_of_object_impl("ZFOO", "program")
-    assert r["obj_name"] == "ZFOO"
     assert r["in_transport"] is False
     assert r["transports"] == []
 

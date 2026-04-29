@@ -71,7 +71,7 @@ def _transport_create_impl(name: str, kind: str, devclass: str,
             "text": text,
         }
     except ADTNotAvailable as e:
-        return {"error": "ADTNotAvailable", "detail": str(e), "tried": e.tried}
+        return {"error": "ADTNotAvailable", "detail": str(e)}
     except ADTError as e:
         return {"error": "ADTError", "http_status": e.status,
                 "code": e.code, "message": e.message}

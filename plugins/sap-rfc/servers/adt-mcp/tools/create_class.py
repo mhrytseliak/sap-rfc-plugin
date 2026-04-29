@@ -73,7 +73,7 @@ def _create_class_impl(name: str, devclass: str, description: str,
             "description": description,
         }
     except ADTNotAvailable as e:
-        return {"error": "ADTNotAvailable", "detail": str(e), "tried": e.tried}
+        return {"error": "ADTNotAvailable", "detail": str(e)}
     except ADTError as e:
         return {"error": "ADTError", "http_status": e.status,
                 "code": e.code, "message": e.message}

@@ -25,7 +25,7 @@ def _ping_impl() -> dict:
                 "core_discovery_entries": count,
             }
     except ADTNotAvailable as e:
-        return {"error": "ADTNotAvailable", "detail": str(e), "tried": e.tried}
+        return {"error": "ADTNotAvailable", "detail": str(e)}
     except ADTError as e:
         return {"error": "ADTError", "http_status": e.status,
                 "code": e.code, "message": e.message}

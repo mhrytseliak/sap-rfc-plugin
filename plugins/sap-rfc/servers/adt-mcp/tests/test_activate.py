@@ -22,8 +22,7 @@ def test_activate_returns_ok_on_empty_200(base):
                   status=200, body="")
     r = _activate_impl([{"name": "ZFOO", "kind": "program"}])
     assert r["status"] == "ok"
-    assert r["activated"] == ["ZFOO"]
-    assert r["errors"] == []
+    assert r["messages"] == []
 
 
 @responses.activate
@@ -42,5 +41,6 @@ def test_activate_returns_errors_when_messages_present(base):
                   status=200, body=body)
     r = _activate_impl([{"name": "ZFOO", "kind": "program"}])
     assert r["status"] == "error"
-    assert len(r["errors"]) == 1
-    assert "Syntax error" in r["errors"][0]["message"]
+    errors = [m for m in r["messages"] if m["severity"] == "E"]
+    assert len(errors) == 1
+    assert "Syntax error" in errors[0]["message"]

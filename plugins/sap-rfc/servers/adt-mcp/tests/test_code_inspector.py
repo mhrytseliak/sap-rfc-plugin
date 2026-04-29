@@ -42,7 +42,6 @@ def test_parse_worklist_counts_by_priority():
     assert summary == {"error_count": 1, "warning_count": 1, "info_count": 0}
     assert findings[0]["line"] == 5 and findings[0]["severity"] == "E"
     assert findings[1]["line"] == 9 and findings[1]["severity"] == "W"
-    assert findings[0]["object_name"] == "ZFOO"
 
 
 def test_parse_worklist_empty_objects():
@@ -111,7 +110,7 @@ def test_code_inspector_runs_three_step_flow(base):
         status=200, body=WORKLIST_WITH_FINDINGS,
     )
     r = _code_inspector_impl("ZFOO", "program", variant="DEFAULT")
-    assert r["worklist_id"] == "WID1"
+    assert r["variant"] == "DEFAULT"
     assert len(r["findings"]) == 2
     assert r["summary"]["error_count"] == 1
     assert r["summary"]["warning_count"] == 1

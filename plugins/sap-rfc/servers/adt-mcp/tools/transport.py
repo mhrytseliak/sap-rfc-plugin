@@ -80,13 +80,11 @@ def _transport_of_object_impl(name: str, kind: str,
             )
         transports = [t for t in _parse_transports(r.text) if t["status"] != "R"]
         return {
-            "obj_name": name.upper(),
-            "kind": kind,
             "in_transport": bool(transports),
             "transports": transports,
         }
     except ADTNotAvailable as e:
-        return {"error": "ADTNotAvailable", "detail": str(e), "tried": e.tried}
+        return {"error": "ADTNotAvailable", "detail": str(e)}
     except ADTError as e:
         return {"error": "ADTError", "http_status": e.status,
                 "code": e.code, "message": e.message}
@@ -115,7 +113,7 @@ def register(mcp):
             devclass: Optional devclass hint (empty string is fine).
 
         Returns:
-            {obj_name, kind, in_transport: bool, transports: [
+            {in_transport: bool, transports: [
                 {trkorr, owner, status, type, text}
             ]}
             'status' is raw CTS status (D=modifiable, L=locked, R=released);

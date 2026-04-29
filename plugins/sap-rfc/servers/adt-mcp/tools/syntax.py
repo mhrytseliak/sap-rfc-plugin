@@ -41,7 +41,6 @@ def _parse_messages(xml_text: str) -> tuple[list[dict], list[dict]]:
             "col": col,
             "severity": sev,
             "message": attrs.get("shortText", "").strip(),
-            "uri": uri,
         }
         if sev == "E":
             errors.append(msg)
@@ -62,13 +61,12 @@ def _syntax_impl(name: str, kind: str, group: str | None = None) -> dict:
             )
         errors, warnings = _parse_messages(r.text)
         return {
-            "object": {"name": name.upper(), "kind": kind, "uri": obj_uri},
             "syntax_ok": not errors,
             "errors": errors,
             "warnings": warnings,
         }
     except ADTNotAvailable as e:
-        return {"error": "ADTNotAvailable", "detail": str(e), "tried": e.tried}
+        return {"error": "ADTNotAvailable", "detail": str(e)}
     except ADTError as e:
         return {"error": "ADTError", "http_status": e.status,
                 "code": e.code, "message": e.message}
@@ -94,7 +92,8 @@ def register(mcp):
             group: Required when kind='fm' (function group name).
 
         Returns:
-            {object: {name, kind, uri}, syntax_ok, errors: [...], warnings: [...]}
+            {syntax_ok, errors: [{line, col, severity, message}],
+             warnings: [{line, col, severity, message}]}
             On failure: {error: 'ADTNotAvailable' | 'ADTError' | 'InvalidKind', ...}
         """
         return _syntax_impl(name, kind, group)

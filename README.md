@@ -80,7 +80,7 @@ All source-returning tools write `.abap` files to a persistent cache dir and ret
 | `activate(objects)` | ADT activation endpoint — reports inactive/invalid objects. Include URIs auto-resolve `?context=<master_uri>` to avoid the "select a master program" error |
 | `code_inspector(name, kind, variant?, group?, max_verdicts?)` | ATC findings via the three-step worklist flow: `POST /atc/worklists?checkVariant=…` → `POST /atc/runs?worklistId=…` → `GET /atc/worklists/<id>`. Existence probe first; non-existent object → `ObjectNotFound` (prevents silent pass on typos) |
 
-Discovery order for the ADT base URL: cached `adt_url` → `ICM_GET_INFO` probe → HTTP check against `/sap/bc/adt/core/discovery`. If no candidate answers (e.g. off-VPN), every tool returns `{error: "ADTNotAvailable", tried: [...]}` so the caller can fall back to manual steps in SAP GUI.
+Discovery order for the ADT base URL: cached `adt_url` → `ICM_GET_INFO` probe → HTTP check against `/sap/bc/adt/core/discovery`. If no candidate answers (e.g. off-VPN), every tool returns `{error: "ADTNotAvailable", detail: "..."}` so the caller can fall back to manual steps in SAP GUI.
 
 Typical create → edit → activate flow:
 ```
