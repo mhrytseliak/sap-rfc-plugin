@@ -64,6 +64,16 @@ def main() -> int:
         # Minimize password lingering in the captured buffer
         result.stdout = ""
 
+    # Invalidate ADT cache from any previous system before writing new creds.
+    # adt_url is host-specific; carrying it across systems sends new auth to
+    # the wrong endpoint and produces misleading 401s. Discovery will
+    # repopulate adt_url on the first adt-mcp call.
+    for stale_key in ("adt_url", "adt_verify_tls", "adt_timeout"):
+        try:
+            keyring.delete_password(SERVICE, stale_key)
+        except Exception:
+            pass
+
     keyring.set_password(SERVICE, "ashost", args.host)
     keyring.set_password(SERVICE, "sysnr", args.sysnr)
     keyring.set_password(SERVICE, "client", client)
