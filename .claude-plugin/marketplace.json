@@ -1,6 +1,6 @@
 {
   "name": "sap-rfc-marketplace",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "SAP plugin for Claude Code — two MCP servers (rfc-mcp + adt-mcp) and connection management skills",
   "owner": {
     "name": "Mykola Hrytseliak",
