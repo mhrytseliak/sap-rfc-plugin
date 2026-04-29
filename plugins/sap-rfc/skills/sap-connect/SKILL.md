@@ -1,10 +1,11 @@
 ---
 name: sap-connect
-description: Use when the user asks to connect to SAP, configure a SAP system, or invokes /sap-connect
-user_invocable: true
+description: Configure SAP connection. Use when connecting to a new SAP system or invoking /sap-connect.
 ---
 
 ## Hard rules
+
+**Violating the letter of these rules is violating the spirit of them. The whole point is that the password never enters chat or shell history — any path that ends with the password somewhere it can be logged is a violation, even if it "feels safer than nothing".**
 
 1. **NEVER ask for the password in chat.** The tkinter dialog launched by `connect.py` is the ONLY channel for credentials. If it fails to launch, fix the launch — do not fall back to chat input.
 2. **Parse landscape XML by `serviceid`, not by index.** The order of `<Service>` entries is not stable.
@@ -90,3 +91,28 @@ Resolved args for `connect.py`:
 - `--saprouter "/H/91.202.7.52/S/3299/W/secret"`
 
 Run it, then call the `ping` MCP tool to verify.
+
+## Red flags — STOP and re-read the rules
+
+If you catch yourself thinking any of these, you are about to violate the skill:
+
+- "I'll just ask for the password — the user said they're in a hurry."
+- "tkinter is broken, I'll fall back to manual entry in chat just this once."
+- "I'll write the keyring keys directly with `python -c "import keyring; ..."` to skip the dialog."
+- "The user can scrub the password from scrollback afterwards."
+- "I'll resolve the system by `--name` / label match instead of `serviceid` — close enough."
+- "I'll skip ping — connect.py exited 0, that's good enough."
+- "I'll Grep for 'prod' instead of parsing the XML — faster."
+
+All of these mean: **stop, read this skill again, and follow the steps as written.**
+
+## Common mistakes
+
+| Excuse | Reality |
+|--------|---------|
+| "tkinter failed, I'll collect the password in chat as a fallback." | The password lands in the conversation transcript, in scrollback, and in any tool result the model's host caches. There is no "scrub it after". If tkinter is broken, fix tkinter (`python -m tkinter` to reproduce; on Windows, reinstall Python with the Tcl/Tk feature). Do NOT proceed without the dialog. |
+| "I'll write the keyring values directly with `keyring.set_password(...)` from a Python one-liner." | The user still has to type the password somewhere, and the only channel left is chat. This is the chat-input violation wearing a different hat. |
+| "Resolving by `--name "<label>"` is simpler than parsing XML." | Labels collide. The landscape has multiple `name="Production"` and `name="Development"` entries across customers. `serviceid` is the only stable key — resolve in the model, then pass `--host`, `--sysnr`, `--saprouter` as four explicit args. |
+| "User said 'connect to prod' — I'll grep for /prod/i and pick the first hit." | "Prod" alone does not identify a system in a multi-customer landscape. Ask which customer first, then resolve by `serviceid`. Wrong production system is a much bigger problem than a 5-second clarification. |
+| "connect.py exited 0, the dialog showed a success toast — I can skip ping." | A successful keyring write is not a successful connection. Network, router, client, language, and SNC issues only surface on the first RFC call. The `ping` MCP tool is the sanity check; never skip it. |
+| "I'll claim success and let the user run a tool to find out if ping fails." | The user asked you to connect them. If ping returns an error, that is the result of `/sap-connect` — surface it, do not bury it. |

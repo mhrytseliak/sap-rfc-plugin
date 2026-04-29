@@ -49,7 +49,7 @@ class ADTClient:
             "sap-client": _kr("client"),
             "Accept": "application/xml,*/*;q=0.1",
         })
-        verify = _kr("adt_verify_tls", "1") != "0"
+        verify = _kr("adt_verify_tls", "0") == "1"
         self.s.verify = verify
         self._verify = verify
         self._warnings_ctx: warnings.catch_warnings | None = None

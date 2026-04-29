@@ -12,3 +12,6 @@ build/
 .vscode/
 *.log
 .claude/settings.local.json
+
+# Skill pressure-test transcripts — local dev artefacts, not user-facing docs
+plugins/*/skills/*/tests/

@@ -88,8 +88,8 @@ def register(mcp):
         ALWAYS confirm with the user before calling: show name, kind,
         transport, line count; only proceed on explicit approval.
 
-        v1 limitation: object must already exist. Creating new programs/
-        classes via ADT is deferred (requires parent-collection POST first).
+        Object must already exist. Use `create_program` / `create_include` /
+        `create_class` to create the empty header before uploading source.
 
         Args:
             name: Object name (upper-cased).

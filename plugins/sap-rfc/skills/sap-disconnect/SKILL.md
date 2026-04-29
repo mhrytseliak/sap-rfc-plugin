@@ -1,7 +1,6 @@
 ---
 name: sap-disconnect
-description: Use when the user asks to disconnect from SAP, clear credentials, or invokes /sap-disconnect
-user_invocable: true
+description: Clear SAP credentials from the OS keyring. Use when disconnecting from SAP or invoking /sap-disconnect.
 ---
 
 ## Steps

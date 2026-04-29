@@ -1,7 +1,6 @@
 ---
 name: sap-change-connection
-description: Use when the user asks to switch SAP systems, change the current connection, or invokes /sap-change-connection
-user_invocable: true
+description: Switch SAP systems. Use when changing the current connection or invoking /sap-change-connection.
 ---
 
 ## Steps

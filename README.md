@@ -2,7 +2,7 @@
 
 Claude Code plugin for SAP systems. Provides two MCP servers and three connection-management skills:
 
-- **`rfc-mcp`** — 8 read-only tools over RFC (`pyrfc`).
+- **`rfc-mcp`** — 9 tools over RFC (`pyrfc`). Read-only except `update_text_pool`.
 - **`adt-mcp`** — 10 write + check tools over ADT (HTTP). Auto-discovers the ADT base URL via `ICM_GET_INFO`.
 
 ## Prerequisites
@@ -61,6 +61,7 @@ Removes all credentials from the OS keyring.
 | `get_function_module_interface(name, with_source?)` | FM interface (params/exceptions); optional source dump |
 | `read_text_pool(name, language?)` | Report title / text symbols / selection texts. Language auto-resolved from TRDIR.RLOAD → logon fallback |
 | `update_text_pool(name, entries, transport, language?)` | Read-merge-write text pool via `RPY_TEXTELEMENTS_INSERT`. Auto re-applies 8-space prefix for selection texts. Devclass resolved from TADIR. Transport required |
+| `read_form(file_path, render?, render_html?)` | Parse a SAPscript form export (`RSTXSCRP` `.FOR` file). Offline only — no SAP call. Writes outline + optional wireframe PNG + interactive HTML preview to the cache dir |
 
 All source-returning tools write `.abap` files to a persistent cache dir and return `{source_file, line_count}` — open the file with the Read tool when you need the content. This keeps tool responses compact.
 

@@ -90,7 +90,11 @@ def register(mcp):
         """Create a CTS workbench request via ADT for a given object.
 
         ADT requires an object context. The request is created in the object's
-        development class; SAP auto-creates the task owned by the caller.
+        development class; SAP auto-creates the task owned by the caller. The
+        ref object does NOT need to exist yet — the TR is bound to the package.
+
+        Bare empty TRs (no object/package context) cannot be created via ADT.
+        For those, fall back to SE09/SE10 or BAPI_CTREQUEST_CREATE.
 
         ALWAYS confirm with the user before calling: show (name, kind,
         devclass, text) and only proceed on explicit approval.
