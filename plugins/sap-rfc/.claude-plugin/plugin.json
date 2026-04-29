@@ -10,21 +10,13 @@
   "repository": "https://github.com/mhrytseliak/sap-rfc-plugin",
   "license": "MIT",
   "keywords": ["sap", "abap", "rfc", "adt", "mcp", "pyrfc"],
-  "userConfig": {
-    "python_path": {
-      "type": "string",
-      "title": "Python interpreter path",
-      "description": "Absolute path to a Python 3.10+ interpreter with pyrfc installed. On Windows, do NOT use bare 'python' — the WindowsApps stub will silently fail. Example: C:/Python311/python.exe (Windows) or /usr/bin/python3 (Linux/Mac). Leave blank to use 'python' from PATH.",
-      "default": "python"
-    }
-  },
   "mcpServers": {
     "rfc-mcp": {
-      "command": "${user_config.python_path}",
+      "command": "python",
       "args": ["${CLAUDE_PLUGIN_ROOT}/servers/rfc-mcp/server.py"]
     },
     "adt-mcp": {
-      "command": "${user_config.python_path}",
+      "command": "python",
       "args": ["${CLAUDE_PLUGIN_ROOT}/servers/adt-mcp/server.py"]
     }
   }
