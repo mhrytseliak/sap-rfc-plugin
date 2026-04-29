@@ -1,7 +1,68 @@
 from connection import get_connection
+from timeout import with_timeout, RFCTimeout
 from where_clause import chunk_where
 
 MAX_ROWS = 20
+
+
+def _get_table_structure_impl(table: str) -> dict:
+    conn = get_connection()
+    try:
+        result = conn.call("DDIF_FIELDINFO_GET", TABNAME=table.upper())
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    fields = []
+    for f in result.get("DFIES_TAB", []):
+        entry = {
+            "field": f["FIELDNAME"],
+            "type": f["DATATYPE"],
+            "length": int(f["LENG"]),
+        }
+        dec = int(f["DECIMALS"])
+        if dec:
+            entry["decimals"] = dec
+        if f["KEYFLAG"] == "X":
+            entry["key"] = True
+        desc = f.get("FIELDTEXT", "").strip()
+        if desc:
+            entry["description"] = desc
+        fields.append(entry)
+    return {"table": table.upper(), "fields": fields}
+
+
+def _read_table_impl(table: str, fields, where, max_rows: int) -> dict:
+    max_rows = min(max_rows, MAX_ROWS)
+    conn = get_connection()
+    try:
+        params = {
+            "QUERY_TABLE": table.upper(),
+            "DELIMITER": "|",
+            "ROWCOUNT": max_rows,
+        }
+        if fields:
+            params["FIELDS"] = [{"FIELDNAME": f.upper()} for f in fields]
+        if where:
+            params["OPTIONS"] = [{"TEXT": c} for c in chunk_where(where)]
+        result = conn.call("RFC_READ_TABLE", **params)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    field_names = [f["FIELDNAME"] for f in result["FIELDS"]]
+    rows = [
+        dict(
+            zip(
+                field_names,
+                [v.strip() for v in line["WA"].split("|")],
+            )
+        )
+        for line in result["DATA"]
+    ]
+    return {"table": table.upper(), "rows": rows}
 
 
 def register(mcp):
@@ -21,26 +82,9 @@ def register(mcp):
         from pyrfc import ABAPApplicationError
 
         try:
-            conn = get_connection()
-            result = conn.call("DDIF_FIELDINFO_GET", TABNAME=table.upper())
-            conn.close()
-            fields = []
-            for f in result.get("DFIES_TAB", []):
-                entry = {
-                    "field": f["FIELDNAME"],
-                    "type": f["DATATYPE"],
-                    "length": int(f["LENG"]),
-                }
-                dec = int(f["DECIMALS"])
-                if dec:
-                    entry["decimals"] = dec
-                if f["KEYFLAG"] == "X":
-                    entry["key"] = True
-                desc = f.get("FIELDTEXT", "").strip()
-                if desc:
-                    entry["description"] = desc
-                fields.append(entry)
-            return {"table": table.upper(), "fields": fields}
+            return with_timeout(_get_table_structure_impl, table)
+        except RFCTimeout as e:
+            return {"error": "Timeout", "detail": str(e)}
         except ABAPApplicationError as e:
             return {
                 "error": f"Table '{table}' not found or no authorization",
@@ -74,31 +118,10 @@ def register(mcp):
         """
         from pyrfc import ABAPApplicationError
 
-        max_rows = min(max_rows, MAX_ROWS)
         try:
-            conn = get_connection()
-            params = {
-                "QUERY_TABLE": table.upper(),
-                "DELIMITER": "|",
-                "ROWCOUNT": max_rows,
-            }
-            if fields:
-                params["FIELDS"] = [{"FIELDNAME": f.upper()} for f in fields]
-            if where:
-                params["OPTIONS"] = [{"TEXT": c} for c in chunk_where(where)]
-            result = conn.call("RFC_READ_TABLE", **params)
-            conn.close()
-            field_names = [f["FIELDNAME"] for f in result["FIELDS"]]
-            rows = [
-                dict(
-                    zip(
-                        field_names,
-                        [v.strip() for v in line["WA"].split("|")],
-                    )
-                )
-                for line in result["DATA"]
-            ]
-            return {"table": table.upper(), "rows": rows}
+            return with_timeout(_read_table_impl, table, fields, where, max_rows)
+        except RFCTimeout as e:
+            return {"error": "Timeout", "detail": str(e)}
         except ABAPApplicationError as e:
             return {"error": f"ABAP error on table '{table}'", "detail": str(e)}
         except Exception as e:

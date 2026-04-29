@@ -1,5 +1,6 @@
 from connection import get_connection
 from cache import write_source
+from timeout import with_timeout, RFCTimeout
 from where_clause import chunk_where
 
 
@@ -47,6 +48,74 @@ def _read_class_method(conn, cls: str, method: str) -> dict:
     }
 
 
+def _read_source_impl(name: str, type: str, method) -> dict:
+    conn = get_connection()
+    try:
+        t = type.lower()
+        if t == "class":
+            if not method:
+                result = conn.call(
+                    "RFC_READ_TABLE",
+                    QUERY_TABLE="TMDIR",
+                    DELIMITER="|",
+                    FIELDS=[{"FIELDNAME": "METHODNAME"}],
+                    OPTIONS=[{"TEXT": f"CLASSNAME EQ '{name.upper()}'"}],
+                    ROWCOUNT=200,
+                )
+                methods = sorted({line["WA"].strip() for line in result["DATA"] if line["WA"].strip()})
+                if not methods:
+                    return {"error": f"Class '{name}' not found or has no methods"}
+                return {"class": name.upper(), "methods": methods}
+            return _read_class_method(conn, name, method)
+        lines = _read_program_lines(conn, name.upper())
+        return {
+            "name": name.upper(),
+            "type": t,
+            **write_source(name.upper(), "\n".join(lines)),
+        }
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _search_objects_impl(name_pattern, object_types, devclass, max_rows: int) -> dict:
+    conn = get_connection()
+    try:
+        clauses = [f"OBJ_NAME LIKE '{name_pattern.upper()}'"]
+        if object_types:
+            quoted = ",".join(f"'{t.upper()}'" for t in object_types)
+            clauses.append(f"AND OBJECT IN ({quoted})")
+        if devclass:
+            clauses.append(f"AND DEVCLASS EQ '{devclass.upper()}'")
+        where = " ".join(clauses)
+        result = conn.call(
+            "RFC_READ_TABLE",
+            QUERY_TABLE="TADIR",
+            DELIMITER="|",
+            FIELDS=[
+                {"FIELDNAME": "OBJECT"},
+                {"FIELDNAME": "OBJ_NAME"},
+                {"FIELDNAME": "DEVCLASS"},
+                {"FIELDNAME": "AUTHOR"},
+            ],
+            OPTIONS=[{"TEXT": c} for c in chunk_where(where)],
+            ROWCOUNT=max_rows,
+        )
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    field_names = [f["FIELDNAME"] for f in result["FIELDS"]]
+    rows = [
+        dict(zip(field_names, [v.strip() for v in line["WA"].split("|")]))
+        for line in result["DATA"]
+    ]
+    return {"results": rows}
+
+
 def register(mcp):
     @mcp.tool()
     def read_source(name: str, type: str = "program", method: str | None = None) -> dict:
@@ -74,33 +143,9 @@ def register(mcp):
         """
         from pyrfc import ABAPApplicationError
         try:
-            conn = get_connection()
-            t = type.lower()
-            if t == "class":
-                if not method:
-                    result = conn.call(
-                        "RFC_READ_TABLE",
-                        QUERY_TABLE="TMDIR",
-                        DELIMITER="|",
-                        FIELDS=[{"FIELDNAME": "METHODNAME"}],
-                        OPTIONS=[{"TEXT": f"CLASSNAME EQ '{name.upper()}'"}],
-                        ROWCOUNT=200,
-                    )
-                    conn.close()
-                    methods = sorted({line["WA"].strip() for line in result["DATA"] if line["WA"].strip()})
-                    if not methods:
-                        return {"error": f"Class '{name}' not found or has no methods"}
-                    return {"class": name.upper(), "methods": methods}
-                out = _read_class_method(conn, name, method)
-                conn.close()
-                return out
-            lines = _read_program_lines(conn, name.upper())
-            conn.close()
-            return {
-                "name": name.upper(),
-                "type": t,
-                **write_source(name.upper(), "\n".join(lines)),
-            }
+            return with_timeout(_read_source_impl, name, type, method)
+        except RFCTimeout as e:
+            return {"error": "Timeout", "detail": str(e)}
         except ABAPApplicationError as e:
             return {"error": "ABAPApplicationError", "detail": str(e)}
         except Exception as e:
@@ -132,38 +177,13 @@ def register(mcp):
             devclass: SAP package name (e.g. 'ZSD', '$TMP' for local objects).
             max_rows: Default 100. Increase only when you know the result fits.
 
-        Returns: {count, results: [{OBJECT, OBJ_NAME, DEVCLASS, AUTHOR}]}.
+        Returns: {results: [{OBJECT, OBJ_NAME, DEVCLASS, AUTHOR}]}.
         """
         from pyrfc import ABAPApplicationError
         try:
-            conn = get_connection()
-            clauses = [f"OBJ_NAME LIKE '{name_pattern.upper()}'"]
-            if object_types:
-                quoted = ",".join(f"'{t.upper()}'" for t in object_types)
-                clauses.append(f"AND OBJECT IN ({quoted})")
-            if devclass:
-                clauses.append(f"AND DEVCLASS EQ '{devclass.upper()}'")
-            where = " ".join(clauses)
-            result = conn.call(
-                "RFC_READ_TABLE",
-                QUERY_TABLE="TADIR",
-                DELIMITER="|",
-                FIELDS=[
-                    {"FIELDNAME": "OBJECT"},
-                    {"FIELDNAME": "OBJ_NAME"},
-                    {"FIELDNAME": "DEVCLASS"},
-                    {"FIELDNAME": "AUTHOR"},
-                ],
-                OPTIONS=[{"TEXT": c} for c in chunk_where(where)],
-                ROWCOUNT=max_rows,
-            )
-            conn.close()
-            field_names = [f["FIELDNAME"] for f in result["FIELDS"]]
-            rows = [
-                dict(zip(field_names, [v.strip() for v in line["WA"].split("|")]))
-                for line in result["DATA"]
-            ]
-            return {"count": len(rows), "results": rows}
+            return with_timeout(_search_objects_impl, name_pattern, object_types, devclass, max_rows)
+        except RFCTimeout as e:
+            return {"error": "Timeout", "detail": str(e)}
         except ABAPApplicationError as e:
             return {"error": "ABAPApplicationError", "detail": str(e)}
         except Exception as e:

@@ -18,4 +18,5 @@ ALL_KEYS = (
     "adt_url",
     "adt_verify_tls",
     "adt_timeout",
+    "rfc_timeout",
 )

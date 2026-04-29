@@ -8,7 +8,7 @@ Connection setup: `/sap-connect` (see plugin root). Each tool call opens a fresh
 
 | Tool | RFC backing | What it does |
 |------|-------------|--------------|
-| `ping` | `RFC_PING`, `RFC_SYSTEM_INFO` | Sanity check + system info (SID, release, host, S/4 flag). |
+| `ping` | `RFC_PING`, `RFC_SYSTEM_INFO` | Sanity check + system info (SID, release, host, workspace label). |
 | `search_objects` | `RFC_READ_TABLE` → TADIR | Discover object names by pattern + type + devclass. |
 | `get_table_structure` | `DDIF_FIELDINFO_GET` | DDIC fields (field, type, length, key, description). |
 | `read_table` | `RFC_READ_TABLE` | Read up to 20 rows. WHERE auto-chunked. |

@@ -8,8 +8,8 @@ def test_to_external_strips_sel_prefix():
         {"ID": "S", "KEY": "P_BUKRS  ", "ENTRY": _SEL_PREFIX + "Company Code", "LENGTH": 20},
     ]
     out = _to_external(raw)
-    assert out[0] == {"id": "R", "key": "", "entry": "Report Title", "length": 12}
-    assert out[1] == {"id": "I", "key": "001", "entry": "Hello", "length": 5}
+    assert out[0] == {"id": "R", "key": "", "entry": "Report Title"}
+    assert out[1] == {"id": "I", "key": "001", "entry": "Hello"}
     assert out[2]["entry"] == "Company Code"
     assert out[2]["key"] == "P_BUKRS"
 

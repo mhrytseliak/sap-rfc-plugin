@@ -1,4 +1,5 @@
 from connection import get_connection
+from timeout import with_timeout, RFCTimeout
 
 
 _SEL_PREFIX = " " * 8
@@ -61,7 +62,6 @@ def _to_external(entries: list[dict]) -> list[dict]:
             "id": row.get("ID", ""),
             "key": row.get("KEY", "").rstrip(),
             "entry": entry,
-            "length": row.get("LENGTH", 0),
         })
     return out
 
@@ -102,6 +102,69 @@ def _merge(current: list[dict], incoming: list[dict]) -> tuple[list[dict], int, 
     return [by_key[k] for k in order], added, replaced
 
 
+def _read_text_pool_impl(name: str, language) -> dict:
+    conn = get_connection()
+    try:
+        program = name.upper()
+        lang = _resolve_language(conn, program, language)
+        raw = _read_pool(conn, program, lang)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    entries = _to_external(raw)
+    return {
+        "program": program,
+        "language": lang,
+        "count": len(entries),
+        "entries": entries,
+    }
+
+
+def _update_text_pool_impl(name: str, entries, transport: str, language) -> dict:
+    conn = get_connection()
+    try:
+        program = name.upper()
+        lang = _resolve_language(conn, program, language)
+        devclass = _lookup_devclass(conn, program)
+        if not devclass:
+            return {"error": "ProgramNotFound", "detail": f"{program} not in TADIR"}
+
+        current = _read_pool(conn, program, lang)
+        incoming = _to_textpool(entries)
+        merged, added, replaced = _merge(current, incoming)
+
+        # All mandatory IMPORT params must be passed explicitly — pyrfc
+        # does not fall back to ABAP DEFAULTs declared on the FM, and an
+        # empty LANGUAGE silently causes `INSERT TEXTPOOL ... LANGUAGE ''`
+        # to write nothing (no exception raised).
+        conn.call(
+            "RPY_TEXTELEMENTS_INSERT",
+            PROGRAM_NAME=program,
+            LANGUAGE=lang,
+            R2_FLAG=" ",
+            TEMPORARY=" ",
+            DEVELOPMENT_CLASS=devclass,
+            TRANSPORT_NUMBER=transport.upper(),
+            SUPPRESS_DIALOG="X",
+            SOURCE=merged,
+        )
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {
+        "ok": True,
+        "program": program,
+        "language": lang,
+        "rows_written": len(merged),
+        "added": added,
+        "replaced": replaced,
+    }
+
+
 def register(mcp):
     @mcp.tool()
     def read_text_pool(name: str, language: str | None = None) -> dict:
@@ -122,22 +185,13 @@ def register(mcp):
             language: Single-char SY-LANGU override (`E`, `D`, `U`, ...). When
                       omitted, resolved from TRDIR.RLOAD, then logon language.
 
-        Returns: {program, language, count, entries: [{id, key, entry, length}]}.
+        Returns: {program, language, count, entries: [{id, key, entry}]}.
         """
         from pyrfc import ABAPApplicationError
         try:
-            conn = get_connection()
-            program = name.upper()
-            lang = _resolve_language(conn, program, language)
-            raw = _read_pool(conn, program, lang)
-            conn.close()
-            entries = _to_external(raw)
-            return {
-                "program": program,
-                "language": lang,
-                "count": len(entries),
-                "entries": entries,
-            }
+            return with_timeout(_read_text_pool_impl, name, language)
+        except RFCTimeout as e:
+            return {"error": "Timeout", "detail": str(e)}
         except ABAPApplicationError as e:
             return {"error": "ABAPApplicationError", "detail": str(e)}
         except Exception as e:
@@ -175,42 +229,9 @@ def register(mcp):
         """
         from pyrfc import ABAPApplicationError
         try:
-            conn = get_connection()
-            program = name.upper()
-            lang = _resolve_language(conn, program, language)
-            devclass = _lookup_devclass(conn, program)
-            if not devclass:
-                conn.close()
-                return {"error": "ProgramNotFound", "detail": f"{program} not in TADIR"}
-
-            current = _read_pool(conn, program, lang)
-            incoming = _to_textpool(entries)
-            merged, added, replaced = _merge(current, incoming)
-
-            # All mandatory IMPORT params must be passed explicitly — pyrfc
-            # does not fall back to ABAP DEFAULTs declared on the FM, and an
-            # empty LANGUAGE silently causes `INSERT TEXTPOOL ... LANGUAGE ''`
-            # to write nothing (no exception raised).
-            conn.call(
-                "RPY_TEXTELEMENTS_INSERT",
-                PROGRAM_NAME=program,
-                LANGUAGE=lang,
-                R2_FLAG=" ",
-                TEMPORARY=" ",
-                DEVELOPMENT_CLASS=devclass,
-                TRANSPORT_NUMBER=transport.upper(),
-                SUPPRESS_DIALOG="X",
-                SOURCE=merged,
-            )
-            conn.close()
-            return {
-                "ok": True,
-                "program": program,
-                "language": lang,
-                "rows_written": len(merged),
-                "added": added,
-                "replaced": replaced,
-            }
+            return with_timeout(_update_text_pool_impl, name, entries, transport, language)
+        except RFCTimeout as e:
+            return {"error": "Timeout", "detail": str(e)}
         except ABAPApplicationError as e:
             return {"error": "ABAPApplicationError", "detail": str(e)}
         except Exception as e:

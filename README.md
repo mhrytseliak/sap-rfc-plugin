@@ -95,7 +95,7 @@ activate(objects=[{name: "ZMY_PROG", kind: "program"}])
 
 Stored in the OS keyring (Windows Credential Manager / macOS Keychain / Linux Secret Service). No plaintext files — credentials are encrypted and tied to your OS user account.
 
-Keys stored: `ashost`, `sysnr`, `client`, `user`, `passwd`, `lang`, `saprouter` (optional), `workspace`, and (populated by `adt-mcp` discovery) `adt_url`, `adt_verify_tls`, `adt_timeout`.
+Keys stored: `ashost`, `sysnr`, `client`, `user`, `passwd`, `lang`, `saprouter` (optional), `workspace`, `rfc_timeout` (default 60s), and (populated by `adt-mcp` discovery) `adt_url`, `adt_verify_tls`, `adt_timeout`.
 
 ## Cross-platform
 
