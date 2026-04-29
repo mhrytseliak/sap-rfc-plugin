@@ -1,0 +1,22 @@
+{
+  "name": "sap-rfc",
+  "version": "0.1.1",
+  "description": "Two SAP MCP servers for Claude Code: rfc-mcp (8 read-only RFC tools incl. text pool) and adt-mcp (10 ADT write/check tools incl. create_program/include/class), plus connection management skills",
+  "author": {
+    "name": "Mykola Hrytseliak",
+    "email": "mhrytseliak@gmail.com"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/mhrytseliak/sap-rfc-plugin",
+  "keywords": ["sap", "abap", "rfc", "adt", "mcp", "pyrfc"],
+  "mcpServers": {
+    "rfc-mcp": {
+      "command": "python",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/servers/rfc-mcp/server.py"]
+    },
+    "adt-mcp": {
+      "command": "python",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/servers/adt-mcp/server.py"]
+    }
+  }
+}

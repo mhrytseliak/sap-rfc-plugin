@@ -1,0 +1,5 @@
+pyrfc
+keyring
+mcp
+requests>=2.31
+Pillow>=10

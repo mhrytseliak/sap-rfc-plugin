@@ -1,0 +1,228 @@
+FORM J_2GLP_DASD   (original language: G; page format: DINA4 LANDSCAPE; CPI=12 LPI=6)
+  Description: For printing DA(SD)
+
+PAGES
+  FIRST  -> NEXT    mode=NEXT  main=(x=0.00cm y=7.20cm w=27.94cm h=8.47cm)  "First page"
+  NEXT   -> NEXT    mode=NEXT  main=(x=0.00cm y=3.81cm w=27.94cm h=11.85cm)  "Next page"
+
+PARAGRAPH FORMATS
+  CN  Centered                      align=CENTER  line-space=1 LN
+  IT  Line items                    line-space=1 LN  tabs=[6CH LEFT, 25CH LEFT, 47CH RIGHT, 49CH LEFT, 63CH RIGHT, 75CH RIGHT, 87CH RIGHT, 99CH RIGHT, 111CH RIGHT, 113CH LEFT]
+  L   Left justified                line-space=1 LN
+  R   Right justified               align=RIGHT  line-space=1 LN
+  VS  Proportinal font 6 pt         line-space=1 LN  font=TIMES  size=6pt  bold=off  italic=off  uline=off
+  VT  Tax info                      line-space=1 LN  tabs=[18CH RIGHT, 31CH RIGHT, 44CH RIGHT, 57CH RIGHT, 70CH RIGHT, 83CH RIGHT, 96CH RIGHT, 109CH RIGHT]
+
+CHARACTER FORMATS
+  B   Bold                          bold=on
+  BC  Bar Code for AADE             barcode=J2GQR
+  UB  Underline & Bold              bold=on  uline=on
+
+WINDOWS (placements on page FIRST)
+  AADE      [VAR  ] x= 26.00cm y= 17.00cm w=  2.70cm h=  2.70cm  AADE QR Code
+  CARRYTO   [VAR  ] x=  0.21cm y= 15.66cm w= 27.94cm h=  0.42cm  Carry to
+  COMPANY   [CONST] x=  0.21cm y=  0.42cm w= 10.16cm h=  2.96cm  Company info
+  EDAT      [VAR  ] x=  0.21cm y= 19.47cm w= 25.40cm h=  0.85cm  Data for "e" file
+  EDDOC     [VAR  ] x=  0.21cm y= 20.32cm w= 25.40cm h=  0.42cm  eDocument MARK UID
+  HEADER    [CONST] x= 12.49cm y=  1.27cm w= 15.66cm h=  2.12cm  Header info
+  MAIN      [MAIN ] x=  0.00cm y=  7.20cm w= 27.94cm h=  8.47cm  Item details
+  PAGE      [VAR  ] x= 21.38cm y=  0.42cm w=  6.77cm h=  0.42cm  Page #
+  PAIPS     [VAR  ] x=  0.21cm y= 19.05cm w= 25.40cm h=  0.42cm  Digital signature
+  PAR       [CONST] x=  0.21cm y=  3.81cm w=  9.53cm h=  2.96cm  BP1 (Recipient)
+  PEL       [CONST] x= 19.68cm y=  3.81cm w=  8.47cm h=  2.96cm  BP3 (Customer)
+  PRO       [CONST] x=  9.95cm y=  3.81cm w=  9.53cm h=  2.96cm  BP2 (Destination)
+  SUM       [VAR  ] x=  0.21cm y= 18.20cm w= 25.40cm h=  0.85cm  Grand totals
+  VAT       [VAR  ] x=  0.21cm y= 16.30cm w= 25.40cm h=  1.69cm  Totals per VAT
+
+ELEMENTS (language E)
+  PAIPS
+    PAIPS                 paragraph=L
+      L   PAIPS>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+      =   >>>>>
+  CARRYTO
+    CARRY_TO              paragraph=IT
+      IT  Σε μεταφορά: &J_2GLPPSDCARR-NET(I11)&
+      fields: &J_2GLPPSDCARR-NET(I11)&
+  COMPANY
+    (lines before /E)     paragraph=L
+      L   <B>Στοιχεία Εταιρίας</>
+      L   Κωδικός: &J_2GLPPSDNM-COM-BUKRS&
+      /:  ADDRESS TYPE 1 PARAGRAPH L
+      /:  NAME     &J_2GLPPSDNM-COM-NAME1&, &J_2GLPPSDNM-COM-NAME2&
+      /:  STREET   &J_2GLPPSDNM-COM-STREET& HOUSE &J_2GLPPSDNM-COM-HOUSE_NUM1&
+      /:  CITY     &J_2GLPPSDNM-COM-CITY1&
+      /:  POSTCODE &J_2GLPPSDNM-COM-POST_CODE1&
+      /:  COUNTRY  &J_2GLPPSDNM-COM-COUNTRY&
+      /:  FROMCOUNTRY 'GR'
+      /:  ENDADDRESS
+      L   &'ΑΦΜ: 'J_2GLPPSDNM-COM-TAXNUM&   &'ΔΟΥ: 'J_2GLPPSDNM-COM-TAXOFF&
+      fields: &J_2GLPPSDNM-COM-BUKRS&, &J_2GLPPSDNM-COM-NAME1&, &J_2GLPPSDNM-COM-NAME2&, &J_2GLPPSDNM-COM-STREET&, &J_2GLPPSDNM-COM-HOUSE_NUM1&, &J_2GLPPSDNM-COM-CITY1&, &J_2GLPPSDNM-COM-POST_CODE1&, &J_2GLPPSDNM-COM-COUNTRY&
+  MAIN
+    MY_TOP                paragraph=IT
+      IT  <UB>AA,,ΚΩΔΙΚΟΣ,,ΠΕΡΙΓΡΑΦΗ,,ΠΟΣΟΤΗΤΑ,,ΜΟΝ.,,ΤΙΜΗ,,ΜΙΚΤΗ ΑΞΙΑ,,
+      =   ΠΡΟΣΘΕΤΟ 1,,ΠΡΟΣΘΕΤΟ 2,,ΚΑΘΑΡΗ ΑΞΙΑ,,ΣΧΕΤΙΚΟ ΠΑΡΑΣΤ.</>
+    CARRY_FROM            paragraph=IT
+      IT  Από μεταφορά: &J_2GLPPSDCARR-NET(I11)&
+      fields: &J_2GLPPSDCARR-NET(I11)&
+    HEADER_TEXT         
+      /:  INCLUDE &J_2GLPPSDNM-TDNAME& OBJECT VBBK ID 0001 PARAGRAPH L
+      fields: &J_2GLPPSDNM-TDNAME&
+    ITEM_LINE             paragraph=IT
+      /:  INCLUDE &J_2GLPPSDM-TDNAME& OBJECT VBBP ID 0001 PARAGRAPH L
+      /:  IF &J_2GLPPSDM-PRICING& = 'X' AND &J_2GLPPSDM-GISSUED& = 'X'
+      /:  PROTECT
+      IT  &J_2GLPPSDM-AA(Z)&,,&J_2GLPPSDM-CODE(Z)&,,&J_2GLPPSDM-MAKTX(10)&,,
+      =   &J_2GLPPSDM-QUAN(I8.3)&,,&J_2GLPPSDM-UOM&,,&J_2GLPPSDM-TIMH2(I11)&,,
+      =   &J_2GLPPSDM-GRVAL(I11)&,,&J_2GLPPSDM-AAD1(I11)&,,
+      =   &J_2GLPPSDM-AAD2(I11)&,,&J_2GLPPSDM-NET(I11)&,,
+      =   &J_2GLPPSDM-RFLEGALDOC&
+      /:  ENDPROTECT
+      /:  ELSEIF &J_2GLPPSDM-PRICING& = 'X'
+      /*  DO NOT SHOW QUANTITIES
+      /:  PROTECT
+      IT  &J_2GLPPSDM-AA(Z)&,,&J_2GLPPSDM-CODE(Z)&,,
+      =   &J_2GLPPSDM-MAKTX(10)&,,,,,,,,&J_2GLPPSDM-GRVAL(I11)&,,
+      =   &J_2GLPPSDM-AAD1(I11)&,,&J_2GLPPSDM-AAD2(I11)&,,
+      =   &J_2GLPPSDM-NET(I11)&,,&J_2GLPPSDM-RFLEGALDOC&
+      /:  ENDPROTECT
+      /:  ELSE
+      /*  SHOW ONLY QUANTITIES
+      /:  PROTECT
+      IT  &J_2GLPPSDM-AA(Z)&,,&J_2GLPPSDM-CODE(Z)&,,&J_2GLPPSDM-MAKTX(10)&,,
+      =   &J_2GLPPSDM-QUAN(I8.3)&,,&J_2GLPPSDM-UOM&,,,,,,,,,,,,
+      =   &J_2GLPPSDM-RFLEGALDOC&
+      /:  ENDPROTECT
+      /:  ENDIF
+      fields: &J_2GLPPSDM-TDNAME&, &J_2GLPPSDM-PRICING&, &J_2GLPPSDM-GISSUED&, &J_2GLPPSDM-AA(Z)&, &J_2GLPPSDM-CODE(Z)&, &J_2GLPPSDM-MAKTX(10)&, &J_2GLPPSDM-QUAN(I8.3)&, &J_2GLPPSDM-UOM&, &J_2GLPPSDM-TIMH2(I11)&, &J_2GLPPSDM-GRVAL(I11)&, &J_2GLPPSDM-AAD1(I11)&, &J_2GLPPSDM-AAD2(I11)&, &J_2GLPPSDM-NET(I11)&, &J_2GLPPSDM-RFLEGALDOC&
+  PAGE
+    (lines before /E)     paragraph=R
+      R   Σελίδα &PAGE& από &SAPSCRIPT-FORMPAGES(C)&
+      fields: &PAGE&, &SAPSCRIPT-FORMPAGES(C)&
+  PAR
+    (lines before /E)     paragraph=L
+      /:  IF &J_2GLPPSDNM-BP1-CODE& NE &SPACE&
+      L   <B>Στοιχεία Παραλήπτη</>
+      L   Κωδικός: &J_2GLPPSDNM-BP1-CODE&
+      /:  ADDRESS DELIVERY TYPE 1 PARAGRAPH L
+      /:  NAME     &J_2GLPPSDNM-BP1-NAME1&, &J_2GLPPSDNM-BP1-NAME2&
+      /:  STREET   &J_2GLPPSDNM-BP1-STREET& HOUSE &J_2GLPPSDNM-BP1-HOUSE_NUM1&
+      /:  CITY     &J_2GLPPSDNM-BP1-CITY1&
+      /:  POSTCODE &J_2GLPPSDNM-BP1-POST_CODE1&
+      /:  COUNTRY  &J_2GLPPSDNM-BP1-COUNTRY&
+      /:  FROMCOUNTRY 'GR'
+      /:  ENDADDRESS
+      L   &'ΑΦΜ: 'J_2GLPPSDNM-BP1-TAXNUM&
+      /:  ENDIF
+      fields: &J_2GLPPSDNM-BP1-CODE&, &SPACE&, &J_2GLPPSDNM-BP1-NAME1&, &J_2GLPPSDNM-BP1-NAME2&, &J_2GLPPSDNM-BP1-STREET&, &J_2GLPPSDNM-BP1-HOUSE_NUM1&, &J_2GLPPSDNM-BP1-CITY1&, &J_2GLPPSDNM-BP1-POST_CODE1&, &J_2GLPPSDNM-BP1-COUNTRY&
+  PEL
+    (lines before /E)     paragraph=L
+      /:  IF &J_2GLPPSDNM-BP3-CODE& NE &SPACE&
+      /:  IF &J_2GLPPSDNM-BP3-CODE& NE &J_2GLPPSDNM-BP1-CODE&
+      L   <B>Στοιχεία Πελάτη</>
+      L   Κωδικός: &J_2GLPPSDNM-BP3-CODE&
+      /:  ADDRESS DELIVERY TYPE 1 PARAGRAPH L
+      /:  NAME     &J_2GLPPSDNM-BP3-NAME1&, &J_2GLPPSDNM-BP3-NAME2&
+      /:  STREET   &J_2GLPPSDNM-BP3-STREET& HOUSE &J_2GLPPSDNM-BP3-HOUSE_NUM1&
+      /:  CITY     &J_2GLPPSDNM-BP3-CITY1&
+      /:  POSTCODE &J_2GLPPSDNM-BP3-POST_CODE1&
+      /:  COUNTRY  &J_2GLPPSDNM-BP3-COUNTRY&
+      /:  FROMCOUNTRY 'GR'
+      /:  ENDADDRESS
+      L   &'ΑΦΜ: 'J_2GLPPSDNM-BP3-TAXNUM&
+      /:  ENDIF
+      /:  ENDIF
+      fields: &J_2GLPPSDNM-BP3-CODE&, &SPACE&, &J_2GLPPSDNM-BP1-CODE&, &J_2GLPPSDNM-BP3-NAME1&, &J_2GLPPSDNM-BP3-NAME2&, &J_2GLPPSDNM-BP3-STREET&, &J_2GLPPSDNM-BP3-HOUSE_NUM1&, &J_2GLPPSDNM-BP3-CITY1&, &J_2GLPPSDNM-BP3-POST_CODE1&, &J_2GLPPSDNM-BP3-COUNTRY&
+  PRO
+    (lines before /E)     paragraph=L
+      /:  IF &J_2GLPPSDNM-BP2-CODE& NE &SPACE&
+      L   <B>Στοιχεία Παράδοσης</>
+      /   &J_2GLPPSDNM-BP2-STREET& &J_2GLPPSDNM-BP2-HOUSE_NUM1&
+      /   &J_2GLPPSDNM-BP2-POST_CODE1& &J_2GLPPSDNM-BP2-CITY1&
+      L   <B>Σκοπός Διακίνησης</>
+      /   &J_2GLPPSDNM-BTEXT&
+      /:  ENDIF
+      fields: &J_2GLPPSDNM-BP2-CODE&, &SPACE&, &J_2GLPPSDNM-BP2-STREET&, &J_2GLPPSDNM-BP2-HOUSE_NUM1&, &J_2GLPPSDNM-BP2-POST_CODE1&, &J_2GLPPSDNM-BP2-CITY1&, &J_2GLPPSDNM-BTEXT&
+  SUM
+    ITEM                  paragraph=VT
+      VT  ,,&J_2GLPPSDTOT-GRVAL(I12)&,,&J_2GLPPSDTOT-DISCBFPA(I12)&,,
+      =   &J_2GLPPSDTOT-ADDBFPA(I12)&,,&J_2GLPPSDTOT-TOTBFPA(I12)&,,
+      =   &J_2GLPPSDTOT-FPA(I12)&,,&J_2GLPPSDTOT-DISCAFPA(I12)&,,
+      =   &J_2GLPPSDTOT-ADDAFPA(I12)&,,&J_2GLPPSDTOT-TOTAL(I12)&
+      fields: &J_2GLPPSDTOT-GRVAL(I12)&, &J_2GLPPSDTOT-DISCBFPA(I12)&, &J_2GLPPSDTOT-ADDBFPA(I12)&, &J_2GLPPSDTOT-TOTBFPA(I12)&, &J_2GLPPSDTOT-FPA(I12)&, &J_2GLPPSDTOT-DISCAFPA(I12)&, &J_2GLPPSDTOT-ADDAFPA(I12)&, &J_2GLPPSDTOT-TOTAL(I12)&
+  VAT
+    (lines before /E)     paragraph=VT
+      VT  <UB>ΦΠΑ,,ΜΙΚΤΗ ΑΞΙΑ,,ΕΚΠΤΩΣΕΙΣ,,ΕΠΙΒΑΡ.,,ΣΥΝ.ΠΡΟ ΦΠΑ,,ΦΠΑ,,
+      =   ΕΚΠΤΩΣΕΙΣ,,ΕΠΙΒΑΡ.,,ΠΛΗΡΩΤΕΟ</>
+    ITEM1                 paragraph=VT
+      VT  &J_2GLPPSDFPA1-PFPA(I3.0)'%'&,,&J_2GLPPSDFPA1-GRVAL(I12)&,,
+          &J_2GLPPSDFPA1-DISCBFPA(I12)&,,&J_2GLPPSDFPA1-ADDBFPA(I12)&,,
+          &J_2GLPPSDFPA1-TOTBFPA(I12)&,,&J_2GLPPSDFPA1-FPA(I12)&,,
+          &J_2GLPPSDFPA1-DISCAFPA(I12)&,,&J_2GLPPSDFPA1-ADDAFPA(I12)&,,
+          &J_2GLPPSDFPA1-TOTAL(I12)&
+      fields: &J_2GLPPSDFPA1-PFPA(I3.0)'%'&, &J_2GLPPSDFPA1-GRVAL(I12)&, &J_2GLPPSDFPA1-DISCBFPA(I12)&, &J_2GLPPSDFPA1-ADDBFPA(I12)&, &J_2GLPPSDFPA1-TOTBFPA(I12)&, &J_2GLPPSDFPA1-FPA(I12)&, &J_2GLPPSDFPA1-DISCAFPA(I12)&, &J_2GLPPSDFPA1-ADDAFPA(I12)&, &J_2GLPPSDFPA1-TOTAL(I12)&
+    ITEM2                 paragraph=VT
+      VT  &J_2GLPPSDFPA2-PFPA(I3.0)'%'&,,&J_2GLPPSDFPA2-GRVAL(I12)&,,
+          &J_2GLPPSDFPA2-DISCBFPA(I12)&,,&J_2GLPPSDFPA2-ADDBFPA(I12)&,,
+          &J_2GLPPSDFPA2-TOTBFPA(I12)&,,&J_2GLPPSDFPA2-FPA(I12)&,,
+          &J_2GLPPSDFPA2-DISCAFPA(I12)&,,&J_2GLPPSDFPA2-ADDAFPA(I12)&,,
+          &J_2GLPPSDFPA2-TOTAL(I12)&
+      fields: &J_2GLPPSDFPA2-PFPA(I3.0)'%'&, &J_2GLPPSDFPA2-GRVAL(I12)&, &J_2GLPPSDFPA2-DISCBFPA(I12)&, &J_2GLPPSDFPA2-ADDBFPA(I12)&, &J_2GLPPSDFPA2-TOTBFPA(I12)&, &J_2GLPPSDFPA2-FPA(I12)&, &J_2GLPPSDFPA2-DISCAFPA(I12)&, &J_2GLPPSDFPA2-ADDAFPA(I12)&, &J_2GLPPSDFPA2-TOTAL(I12)&
+    ITEM3                 paragraph=VT
+      VT  &J_2GLPPSDFPA3-PFPA(I3.0)'%'&,,&J_2GLPPSDFPA3-GRVAL(I12)&,,
+          &J_2GLPPSDFPA3-DISCBFPA(I12)&,,&J_2GLPPSDFPA3-ADDBFPA(I12)&,,
+          &J_2GLPPSDFPA3-TOTBFPA(I12)&,,&J_2GLPPSDFPA3-FPA(I12)&,,
+          &J_2GLPPSDFPA3-DISCAFPA(I12)&,,&J_2GLPPSDFPA3-ADDAFPA(I12)&,,
+          &J_2GLPPSDFPA3-TOTAL(I12)&
+      fields: &J_2GLPPSDFPA3-PFPA(I3.0)'%'&, &J_2GLPPSDFPA3-GRVAL(I12)&, &J_2GLPPSDFPA3-DISCBFPA(I12)&, &J_2GLPPSDFPA3-ADDBFPA(I12)&, &J_2GLPPSDFPA3-TOTBFPA(I12)&, &J_2GLPPSDFPA3-FPA(I12)&, &J_2GLPPSDFPA3-DISCAFPA(I12)&, &J_2GLPPSDFPA3-ADDAFPA(I12)&, &J_2GLPPSDFPA3-TOTAL(I12)&
+  HEADER
+    (lines before /E)     paragraph=R
+      R   &J_2GLPPSDNM-TITLE&
+      R   &J_2GLPPSDNM-LEGALDOC&
+      R   &'Αριθμός παράδοσης: 'J_2GLPPSDNM-VBELN(I)&
+      R   &'Ημ/νία χορήγησης: 'J_2GLPPSDNM-FKDAT&  &'Ωρα: 'J_2GLPPSDNM-TIME&
+      R   &'Ημ/νία έκδοσης: 'SY-DATLO&
+      fields: &J_2GLPPSDNM-TITLE&, &J_2GLPPSDNM-LEGALDOC&
+  AADE
+    AADE_QRCODE         
+      /   
+      /   
+      /   
+      /   
+      *   BC>https://www1.aade.gr/tameiakes/myweb/q1.php?SIG=XXXXXXXXXXX99999999Y
+      =   YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY9999999.99</>
+    MYDATA_QRCODE       
+      /   
+      /   
+      /   
+      /   
+      *   <BC>&GV_URL&</>
+      fields: &GV_URL&
+    MYDATA_INABILITY    
+      /:  BOX FRAME 10 TW
+      *   &GV_URL&
+      fields: &GV_URL&
+  EDDOC
+    EDOC                  paragraph=L
+      L   &'MARK ID: 'GV_MARK_ID&  &'UID: 'GV_UID&
+  EDAT
+    ESTR                  paragraph=VS
+      VS  ~~&J_2GLPPSDNM-RCTIN&;
+      =   &J_2GLPPSDNM-RCNUM&;
+      =   &J_2GLPPSDNM-DCODE&;
+      =   &J_2GLPPSDNM-SVNUM&;
+      =   &J_2GLPPSDNM-LEGCN&;
+      =   &J_2GLPPSDNM-NET_A&;
+      =   &J_2GLPPSDNM-NET_B&;
+      =   &J_2GLPPSDNM-NET_C&;
+      =   &J_2GLPPSDNM-NET_D&;
+      =   &J_2GLPPSDNM-NET_E&;
+      =   &J_2GLPPSDNM-VAT_A&;
+      =   &J_2GLPPSDNM-VAT_B&;
+      =   &J_2GLPPSDNM-VAT_C&;
+      =   &J_2GLPPSDNM-VAT_D&;
+      =   &J_2GLPPSDNM-TOTAL&;
+      =   &J_2GLPPSDNM-CURCD&;
+      =   &J_2GLPPSDNM-PAYNUM&;
+      =   &J_2GLPPSDNM-PAYTOT&;
+      =   &J_2GLPPSDNM-MYDATA&;~~
+      fields: &J_2GLPPSDNM-RCTIN&, &J_2GLPPSDNM-RCNUM&, &J_2GLPPSDNM-DCODE&, &J_2GLPPSDNM-SVNUM&, &J_2GLPPSDNM-LEGCN&, &J_2GLPPSDNM-NET_A&, &J_2GLPPSDNM-NET_B&, &J_2GLPPSDNM-NET_C&, &J_2GLPPSDNM-NET_D&, &J_2GLPPSDNM-NET_E&, &J_2GLPPSDNM-VAT_A&, &J_2GLPPSDNM-VAT_B&, &J_2GLPPSDNM-VAT_C&, &J_2GLPPSDNM-VAT_D&, &J_2GLPPSDNM-TOTAL&, &J_2GLPPSDNM-CURCD&, &J_2GLPPSDNM-PAYNUM&, &J_2GLPPSDNM-PAYTOT&, &J_2GLPPSDNM-MYDATA&
