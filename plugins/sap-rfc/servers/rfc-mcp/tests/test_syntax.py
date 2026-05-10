@@ -75,7 +75,7 @@ def test_syntax_check_clean_program(monkeypatch):
     args, kwargs = conn.call.call_args
     assert args[0] == "RS_ABAP_SYNTAX_CHECK_E"
     assert kwargs["P_PROGRAM"] == "ZGOOD"
-    assert kwargs["P_LANGU"] == "EN"
+    assert kwargs["P_LANGU"] == "E"
 
 
 def test_syntax_check_reports_errors(monkeypatch):

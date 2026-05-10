@@ -34,7 +34,7 @@ def _parse_messages(rows: list[dict]) -> list[dict]:
 
 def _syntax_check_impl(name: str, kind: str) -> dict:
     name = name.upper()
-    lang = (keyring.get_password(SERVICE_NAME, "lang") or "EN").upper()
+    lang = (keyring.get_password(SERVICE_NAME, "lang") or "EN").upper()[:1]
     conn = get_connection()
     try:
         result = conn.call(
