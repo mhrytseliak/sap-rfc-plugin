@@ -19,7 +19,7 @@ import time
 import keyring
 
 from connection import get_connection, SERVICE_NAME
-from timeout import JOB_POLL_INTERVAL
+from timeout import JOB_POLL_INTERVAL, with_timeout, RFCTimeout
 
 
 def _build_free_selinfo(
@@ -258,3 +258,61 @@ def _test_run_impl(
         "joblog": joblog,
         "dump": dump,
     }
+
+
+def register(mcp):
+    @mcp.tool()
+    def test_run(
+        name: str,
+        params: dict | None = None,
+        select_options: list[dict] | None = None,
+        variant: str | None = None,
+        max_wait_sec: int = 120,
+    ) -> dict:
+        """Run an ABAP report via XBP and detect runtime dumps.
+
+        Submits `name` as a one-step background job through the XBP / XMI
+        interface, waits for completion, and reports back the joblog plus a
+        structured `dump` dict if the job aborted with a short dump (ST22).
+        Dump info is correlated from SM21 (RSLG_READ_FILE) by user + time
+        window; a joblog-only fallback is used if syslog yields nothing.
+
+        IMPORTANT: write tool — Claude must summarize parameters and wait for
+        explicit user approval before calling.
+
+        Args:
+            name: Executable program name (TRDIR-SUBC='1').
+            params: Selection-screen PARAMETERS values, e.g. `{'P_DATE': '20260510'}`.
+            select_options: Selection-screen SELECT-OPTIONS as a list of
+                {name, sign('I'|'E'), option('EQ'|'BT'|'CP'|...), low, high}
+                rows. Multiple rows per option name are allowed.
+            variant: Caller-supplied saved variant. Mutually exclusive with
+                `params`/`select_options`.
+            max_wait_sec: Wall-clock budget for the poll loop. Default 120.
+                On timeout the job keeps running; caller can poll later via
+                SM37 with the returned `jobname`/`jobcount`.
+
+        Returns:
+            {status, jobname, jobcount, runtime_sec, joblog, dump} on success.
+            {error, detail} on failure.
+
+        `status` ∈ {'finished','aborted','cancelled','timeout'}.
+        `dump` is None unless the job aborted with a short dump.
+        """
+        from pyrfc import LogonError, CommunicationError, ABAPApplicationError
+        try:
+            return with_timeout(
+                _test_run_impl,
+                name, params, select_options, variant, max_wait_sec,
+                seconds=max(max_wait_sec + 30, 60),
+            )
+        except RFCTimeout as e:
+            return {"error": "Timeout", "detail": str(e)}
+        except LogonError as e:
+            return {"error": "LogonError", "detail": str(e)}
+        except CommunicationError as e:
+            return {"error": "CommunicationError", "detail": str(e)}
+        except ABAPApplicationError as e:
+            return {"error": "ABAPApplicationError", "detail": str(e)}
+        except Exception as e:
+            return {"error": type(e).__name__, "detail": str(e)}
