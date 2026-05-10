@@ -126,6 +126,19 @@ _DONE_STATUSES = {"F", "A", "X"}
 _STATUS_TO_OUT = {"F": "finished", "A": "aborted", "X": "cancelled"}
 
 
+class XBPCallFailed(Exception):
+    """An XBP BAPI returned RETURN.TYPE='E'/'A' instead of succeeding."""
+
+
+def _raise_if_error(result: dict, fm_name: str) -> None:
+    """Surface BAPIRET2 errors as exceptions so callers don't silently see a stuck job."""
+    ret = (result or {}).get("RETURN") or {}
+    if ret.get("TYPE") in ("E", "A"):
+        raise XBPCallFailed(
+            f"{fm_name}: {ret.get('ID', '')} {ret.get('NUMBER', '')} {ret.get('MESSAGE', '')}"
+        )
+
+
 def _xmi_logon(conn) -> None:
     conn.call(
         "BAPI_XMI_LOGON",
@@ -203,8 +216,21 @@ def _test_run_impl(
             step_kwargs["FREE_SELINFO"] = free_selinfo
         conn.call("BAPI_XBP_JOB_ADD_ABAP_STEP", **step_kwargs)
 
-        conn.call("BAPI_XBP_JOB_CLOSE", JOBNAME=jobname, JOBCOUNT=jobcount)
-        conn.call("BAPI_XBP_JOB_START_ASAP", JOBNAME=jobname, JOBCOUNT=jobcount)
+        close_res = conn.call(
+            "BAPI_XBP_JOB_CLOSE",
+            JOBNAME=jobname,
+            JOBCOUNT=jobcount,
+            EXTERNAL_USER_NAME=user,
+        )
+        _raise_if_error(close_res, "BAPI_XBP_JOB_CLOSE")
+        start_res = conn.call(
+            "BAPI_XBP_JOB_START_ASAP",
+            JOBNAME=jobname,
+            JOBCOUNT=jobcount,
+            EXTERNAL_USER_NAME=user,
+            TARGET_SERVER="",
+        )
+        _raise_if_error(start_res, "BAPI_XBP_JOB_START_ASAP")
 
         # Poll.
         elapsed = 0.0
@@ -308,6 +334,8 @@ def register(mcp):
             )
         except RFCTimeout as e:
             return {"error": "Timeout", "detail": str(e)}
+        except XBPCallFailed as e:
+            return {"error": "XBPCallFailed", "detail": str(e)}
         except LogonError as e:
             return {"error": "LogonError", "detail": str(e)}
         except CommunicationError as e:
