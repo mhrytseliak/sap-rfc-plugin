@@ -104,6 +104,33 @@ def test_parse_syslog_for_dump_returns_none_when_no_match():
     assert _parse_syslog_for_dump(raw) is None
 
 
+from tools.test_run import _parse_snap_flist
+
+
+def test_parse_snap_flist_extracts_known_tags():
+    flist = (
+        "FC019MESSAGE_TYPE_X_TEXT"
+        "AP012ZRFCMCP_DUMP"
+        "AI012ZRFCMCP_DUMP"
+        "AL0012"
+        "TD0323677393BE0160350E006A005FD5729D8"
+    )
+    out = _parse_snap_flist(flist)
+    assert out["FC"] == "MESSAGE_TYPE_X_TEXT"
+    assert out["AP"] == "ZRFCMCP_DUMP"
+    assert out["AI"] == "ZRFCMCP_DUMP"
+    assert out["AL"] == "2"
+    assert out["TD"] == "3677393BE0160350E006A005FD5729D8"
+
+
+def test_parse_snap_flist_handles_empty_string():
+    assert _parse_snap_flist("") == {}
+
+
+def test_parse_snap_flist_stops_on_malformed_input():
+    assert _parse_snap_flist("FC019TOO_SHORT") == {}
+
+
 from unittest.mock import MagicMock
 
 from tools.test_run import _test_run_impl
@@ -148,26 +175,60 @@ def test_test_run_finished_clean(monkeypatch):
     assert out["jobcount"] == "12345678"
 
 
-def test_test_run_aborted_pulls_syslog(monkeypatch):
+def test_test_run_aborted_pulls_snap(monkeypatch):
+    """Primary dump-detection path: SNAP via RFC_READ_TABLE."""
+    iter_status = iter(["R", "A"])
+    snap_flist = (
+        "FC019MESSAGE_TYPE_X_TEXT"
+        "AP012ZRFCMCP_DUMP"
+        "AI012ZRFCMCP_DUMP"
+        "AL0012"
+        "TD0323677393BE0160350E006A005FD5729D8"
+    )
+
+    def dispatch(fm, **kwargs):
+        if fm == "BAPI_XBP_JOB_STATUS_GET":
+            return {"STATUS": next(iter_status), "RETURN": {"TYPE": "S"}}
+        if fm == "BAPI_XBP_JOB_JOBLOG_READ":
+            return {"JOB_PROTOCOL_NEW": [], "RETURN": {"TYPE": "S"}}
+        if fm == "RFC_READ_TABLE" and kwargs.get("QUERY_TABLE") == "SNAP":
+            return {
+                "FIELDS": [
+                    {"FIELDNAME": "DATUM"},
+                    {"FIELDNAME": "UZEIT"},
+                    {"FIELDNAME": "FLIST"},
+                ],
+                "DATA": [{"WA": f"99991231|235959|{snap_flist}"}],
+            }
+        if fm == "BAPI_XBP_JOB_OPEN":
+            return {"JOBCOUNT": "1", "RETURN": {"TYPE": "S"}}
+        return {"RETURN": {"TYPE": "S"}}
+
+    conn = MagicMock()
+    conn.call.side_effect = dispatch
+    monkeypatch.setattr("tools.test_run.get_connection", lambda: conn)
+    monkeypatch.setattr("tools.test_run.keyring.get_password", lambda *_: "MHRYTSELIAK")
+    monkeypatch.setattr("tools.test_run.JOB_POLL_INTERVAL", 0)
+
+    out = _test_run_impl("ZBAD", None, None, None, max_wait_sec=10)
+    assert out["status"] == "aborted"
+    assert out["dump"]["runtime_error"] == "MESSAGE_TYPE_X"
+    assert out["dump"]["tid"] == "3677393BE0160350E006A005FD5729D8"
+    assert out["dump"]["program"] == "ZRFCMCP_DUMP"
+    assert out["dump"]["line"] == 2
+
+
+def test_test_run_aborted_falls_back_to_syslog(monkeypatch):
+    """Fallback when SNAP is unreachable / empty."""
     iter_status = iter(["R", "A"])
 
     def dispatch(fm, **kwargs):
         if fm == "BAPI_XBP_JOB_STATUS_GET":
             return {"STATUS": next(iter_status), "RETURN": {"TYPE": "S"}}
         if fm == "BAPI_XBP_JOB_JOBLOG_READ":
-            return {
-                "JOB_PROTOCOL_NEW": [
-                    {
-                        "LOG_DATE": "20260510",
-                        "LOG_TIME": "120015",
-                        "MESSAGE_ID": "00",
-                        "MESSAGE_NUMBER": "671",
-                        "MESSAGE_TYPE": "E",
-                        "MESSAGE": "Job cancelled after system exception MESSAGE_TYPE_X",
-                    }
-                ],
-                "RETURN": {"TYPE": "S"},
-            }
+            return {"JOB_PROTOCOL_NEW": [], "RETURN": {"TYPE": "S"}}
+        if fm == "RFC_READ_TABLE" and kwargs.get("QUERY_TABLE") == "SNAP":
+            return {"DATA": []}
         if fm == "RSLG_READ_FILE":
             return {
                 "SYSLOG_IN_TABLE": [

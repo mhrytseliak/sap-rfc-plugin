@@ -122,6 +122,95 @@ def _parse_syslog_for_dump(rows: list[dict]) -> dict | None:
     return None
 
 
+# SNAP TLV format (header row, SEQNO='000'): repeated <2-char tag><3-digit length><payload>.
+# Tags we care about — verified live on DS4 / S/4 758:
+#   FC = runtime-error name (e.g. MESSAGE_TYPE_X_TEXT)
+#   AP = program at dump
+#   AI = include at dump
+#   AL = source line (numeric, not zero-padded inside the value)
+#   TD = transaction ID (32-char hex)
+_SNAP_TAG_RE = re.compile(r"([A-Z]{2})(\d{3})")
+
+
+def _parse_snap_flist(flist: str) -> dict:
+    """Parse SNAP.FLIST TLV header into {tag: value, ...}.
+
+    Returns only the tags we know how to interpret; unknown tags are
+    skipped silently. Malformed input returns an empty dict.
+    """
+    out: dict[str, str] = {}
+    pos = 0
+    while pos < len(flist):
+        m = _SNAP_TAG_RE.match(flist, pos)
+        if not m:
+            break
+        tag = m.group(1)
+        try:
+            length = int(m.group(2))
+        except ValueError:
+            break
+        start = m.end()
+        end = start + length
+        if end > len(flist):
+            break
+        out[tag] = flist[start:end]
+        pos = end
+    return out
+
+
+def _read_dump_from_snap(conn, user: str, t0: time.struct_time) -> dict | None:
+    """Look up the most recent dump for `user` since `t0` in SNAP and parse it.
+
+    SNAP is keyed by (DATUM, UZEIT, AHOST, UNAME, MANDT, MODNO, SEQNO). Header
+    row is SEQNO='000' and carries the TLV with FC/AP/AI/AL/TD. Returns None if
+    no matching dump found.
+    """
+    user = user.upper()
+    today = time.strftime("%Y%m%d", t0)
+    t0_time = time.strftime("%H%M%S", t0)
+    where = f"UNAME EQ '{user}' AND DATUM EQ '{today}' AND SEQNO EQ '000'"
+    result = conn.call(
+        "RFC_READ_TABLE",
+        QUERY_TABLE="SNAP",
+        DELIMITER="|",
+        FIELDS=[
+            {"FIELDNAME": "DATUM"},
+            {"FIELDNAME": "UZEIT"},
+            {"FIELDNAME": "FLIST"},
+        ],
+        OPTIONS=[{"TEXT": where}],
+        ROWCOUNT=20,
+    )
+    rows = []
+    for line in result.get("DATA", []):
+        parts = [p.strip() for p in line["WA"].split("|", 2)]
+        if len(parts) >= 3 and parts[1] >= t0_time:
+            rows.append((parts[0], parts[1], parts[2]))
+    if not rows:
+        return None
+    rows.sort(key=lambda r: (r[0], r[1]), reverse=True)
+    flist = rows[0][2]
+    parsed = _parse_snap_flist(flist)
+    if not parsed.get("FC"):
+        return None
+    runtime_error = parsed["FC"]
+    if runtime_error.endswith("_TEXT"):
+        runtime_error = runtime_error[:-5]
+    line_str = parsed.get("AL", "").strip()
+    try:
+        line_no = int(line_str) if line_str else None
+    except ValueError:
+        line_no = None
+    return {
+        "runtime_error": runtime_error,
+        "tid": parsed.get("TD") or None,
+        "program": parsed.get("AP") or None,
+        "include": parsed.get("AI") or None,
+        "line": line_no,
+        "short_text": parsed.get("FC", ""),
+    }
+
+
 _DONE_STATUSES = {"F", "A", "X"}
 _STATUS_TO_OUT = {"F": "finished", "A": "aborted", "X": "cancelled"}
 
@@ -263,11 +352,18 @@ def _test_run_impl(
         joblog = _parse_joblog(log_res.get("JOB_PROTOCOL_NEW", []) or [])
 
         if status_out == "aborted":
-            t1 = time.gmtime()
             try:
-                syslog_rows = _read_syslog(conn, user, t0, t1)
-                dump = _parse_syslog_for_dump(syslog_rows) or _detect_dump_in_joblog(joblog)
+                dump = _read_dump_from_snap(conn, user, t0)
             except Exception:
+                dump = None
+            if dump is None:
+                t1 = time.gmtime()
+                try:
+                    syslog_rows = _read_syslog(conn, user, t0, t1)
+                    dump = _parse_syslog_for_dump(syslog_rows)
+                except Exception:
+                    dump = None
+            if dump is None:
                 dump = _detect_dump_in_joblog(joblog)
     finally:
         _xmi_logoff(conn)
