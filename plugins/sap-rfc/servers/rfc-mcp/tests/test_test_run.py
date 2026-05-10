@@ -102,3 +102,117 @@ def test_parse_syslog_for_dump_extracts_runtime_error_and_tid():
 def test_parse_syslog_for_dump_returns_none_when_no_match():
     raw = [{"USER": "ME", "MSGNO": "L01", "TEXT": "logon", "DATE": "20260510", "TIME": "120000"}]
     assert _parse_syslog_for_dump(raw) is None
+
+
+from unittest.mock import MagicMock
+
+from tools.test_run import _test_run_impl
+
+
+def _success_dispatch(status_seq):
+    """Make a fake conn.call dispatcher cycling through statuses."""
+    iter_status = iter(status_seq)
+
+    def dispatch(fm, **kwargs):
+        if fm == "BAPI_XMI_LOGON":
+            return {"RETURN": {"TYPE": "S"}}
+        if fm == "BAPI_XBP_JOB_OPEN":
+            return {"JOBCOUNT": "12345678", "RETURN": {"TYPE": "S"}}
+        if fm == "BAPI_XBP_JOB_ADD_ABAP_STEP":
+            return {"STEP_NUMBER": 1, "RETURN": {"TYPE": "S"}}
+        if fm == "BAPI_XBP_JOB_CLOSE":
+            return {"RETURN": {"TYPE": "S"}}
+        if fm == "BAPI_XBP_JOB_START_ASAP":
+            return {"RETURN": {"TYPE": "S"}}
+        if fm == "BAPI_XBP_JOB_STATUS_GET":
+            return {"STATUS": next(iter_status), "RETURN": {"TYPE": "S"}}
+        if fm == "BAPI_XBP_JOB_JOBLOG_READ":
+            return {"JOB_PROTOCOL_NEW": [], "RETURN": {"TYPE": "S"}}
+        if fm == "BAPI_XMI_LOGOFF":
+            return {"RETURN": {"TYPE": "S"}}
+        return {}
+    return dispatch
+
+
+def test_test_run_finished_clean(monkeypatch):
+    conn = MagicMock()
+    conn.call.side_effect = _success_dispatch(["R", "F"])
+    monkeypatch.setattr("tools.test_run.get_connection", lambda: conn)
+    monkeypatch.setattr("tools.test_run.keyring.get_password", lambda *_: "MHRYTSELIAK")
+    monkeypatch.setattr("tools.test_run.JOB_POLL_INTERVAL", 0)
+
+    out = _test_run_impl("ZGOOD", None, None, None, max_wait_sec=10)
+
+    assert out["status"] == "finished"
+    assert out["dump"] is None
+    assert out["jobcount"] == "12345678"
+
+
+def test_test_run_aborted_pulls_syslog(monkeypatch):
+    iter_status = iter(["R", "A"])
+
+    def dispatch(fm, **kwargs):
+        if fm == "BAPI_XBP_JOB_STATUS_GET":
+            return {"STATUS": next(iter_status), "RETURN": {"TYPE": "S"}}
+        if fm == "BAPI_XBP_JOB_JOBLOG_READ":
+            return {
+                "JOB_PROTOCOL_NEW": [
+                    {
+                        "LOG_DATE": "20260510",
+                        "LOG_TIME": "120015",
+                        "MESSAGE_ID": "00",
+                        "MESSAGE_NUMBER": "671",
+                        "MESSAGE_TYPE": "E",
+                        "MESSAGE": "Job cancelled after system exception MESSAGE_TYPE_X",
+                    }
+                ],
+                "RETURN": {"TYPE": "S"},
+            }
+        if fm == "RSLG_READ_FILE":
+            return {
+                "SYSLOG_IN_TABLE": [
+                    {
+                        "USER": "MHRYTSELIAK",
+                        "MSGNO": "AB0",
+                        "TEXT": "Run-time error MESSAGE_TYPE_X has occurred. TID 008__08...0001",
+                        "DATE": "20260510",
+                        "TIME": "120016",
+                    }
+                ]
+            }
+        if fm == "BAPI_XBP_JOB_OPEN":
+            return {"JOBCOUNT": "1", "RETURN": {"TYPE": "S"}}
+        return {"RETURN": {"TYPE": "S"}}
+
+    conn = MagicMock()
+    conn.call.side_effect = dispatch
+    monkeypatch.setattr("tools.test_run.get_connection", lambda: conn)
+    monkeypatch.setattr("tools.test_run.keyring.get_password", lambda *_: "MHRYTSELIAK")
+    monkeypatch.setattr("tools.test_run.JOB_POLL_INTERVAL", 0)
+
+    out = _test_run_impl("ZBAD", None, None, None, max_wait_sec=10)
+    assert out["status"] == "aborted"
+    assert out["dump"]["runtime_error"] == "MESSAGE_TYPE_X"
+    assert out["dump"]["tid"] == "008__08...0001"
+
+
+def test_test_run_timeout_returns_jobcount(monkeypatch):
+    conn = MagicMock()
+    conn.call.side_effect = _success_dispatch(["R"] * 100)
+    monkeypatch.setattr("tools.test_run.get_connection", lambda: conn)
+    monkeypatch.setattr("tools.test_run.keyring.get_password", lambda *_: "ME")
+    monkeypatch.setattr("tools.test_run.JOB_POLL_INTERVAL", 0)
+    # Fake a time source that exceeds max_wait_sec immediately on second poll.
+    times = iter([0.0, 0.5, 100.0])
+    monkeypatch.setattr("tools.test_run.time.monotonic", lambda: next(times))
+
+    out = _test_run_impl("ZSLOW", None, None, None, max_wait_sec=5)
+    assert out["status"] == "timeout"
+    assert out["jobcount"] == "12345678"
+
+
+def test_test_run_mutually_exclusive(monkeypatch):
+    monkeypatch.setattr("tools.test_run.get_connection", lambda: MagicMock())
+    monkeypatch.setattr("tools.test_run.keyring.get_password", lambda *_: "ME")
+    out = _test_run_impl("ZX", {"P_X": "1"}, None, "MYVARIANT", max_wait_sec=5)
+    assert out["error"] == "MutuallyExclusive"

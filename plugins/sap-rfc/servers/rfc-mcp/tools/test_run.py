@@ -14,6 +14,12 @@ Flow:
 from __future__ import annotations
 
 import re
+import time
+
+import keyring
+
+from connection import get_connection, SERVICE_NAME
+from timeout import JOB_POLL_INTERVAL
 
 
 def _build_free_selinfo(
@@ -114,3 +120,141 @@ def _parse_syslog_for_dump(rows: list[dict]) -> dict | None:
             "short_text": text.strip(),
         }
     return None
+
+
+_DONE_STATUSES = {"F", "A", "X"}
+_STATUS_TO_OUT = {"F": "finished", "A": "aborted", "X": "cancelled"}
+
+
+def _xmi_logon(conn) -> None:
+    conn.call(
+        "BAPI_XMI_LOGON",
+        EXTCOMPANY="sap-rfc",
+        EXTPRODUCT="test_run",
+        INTERFACE="XBP",
+        VERSION="3.0",
+    )
+
+
+def _xmi_logoff(conn) -> None:
+    try:
+        conn.call("BAPI_XMI_LOGOFF", INTERFACE="XBP")
+    except Exception:
+        pass
+
+
+def _read_syslog(conn, user: str, t0: time.struct_time, t1: time.struct_time) -> list[dict]:
+    sel = {
+        "DATE": time.strftime("%Y%m%d", t0),
+        "TIME": time.strftime("%H%M%S", t0),
+        "EDATE": time.strftime("%Y%m%d", t1),
+        "ETIME": time.strftime("%H%M%S", t1),
+        "USER": user.upper(),
+        "MSGINC": "X",
+        "MSGLST": "AB0,AB1,AB2",
+    }
+    result = conn.call("RSLG_READ_FILE", SELECTION=sel)
+    return result.get("SYSLOG_IN_TABLE", []) or []
+
+
+def _test_run_impl(
+    name: str,
+    params: dict | None,
+    select_options: list[dict] | None,
+    variant: str | None,
+    max_wait_sec: int,
+) -> dict:
+    if variant and (params or select_options):
+        return {
+            "error": "MutuallyExclusive",
+            "detail": "Pass either `variant` OR (params/select_options), not both.",
+        }
+    name = name.upper()
+    user = (keyring.get_password(SERVICE_NAME, "user") or "").upper()
+
+    free_selinfo = _build_free_selinfo(params, select_options) if not variant else []
+
+    conn = get_connection()
+    started = time.monotonic()
+    t0 = time.gmtime()
+    jobname = f"ZRFCMCP_{name}_{int(time.time())}"[:32]
+    jobcount = ""
+    status_out = "timeout"
+    joblog: list[dict] = []
+    dump: dict | None = None
+    runtime_sec = 0
+
+    try:
+        _xmi_logon(conn)
+
+        open_res = conn.call("BAPI_XBP_JOB_OPEN", JOBNAME=jobname, EXTERNAL_USER_NAME=user)
+        jobcount = open_res.get("JOBCOUNT", "")
+
+        step_kwargs = dict(
+            JOBNAME=jobname,
+            JOBCOUNT=jobcount,
+            EXTERNAL_USER_NAME=user,
+            ABAP_PROGRAM_NAME=name,
+            SAP_USER_NAME=user,
+        )
+        if variant:
+            step_kwargs["ABAP_VARIANT_NAME"] = variant
+        else:
+            step_kwargs["FREE_SELINFO"] = free_selinfo
+        conn.call("BAPI_XBP_JOB_ADD_ABAP_STEP", **step_kwargs)
+
+        conn.call("BAPI_XBP_JOB_CLOSE", JOBNAME=jobname, JOBCOUNT=jobcount)
+        conn.call("BAPI_XBP_JOB_START_ASAP", JOBNAME=jobname, JOBCOUNT=jobcount)
+
+        # Poll.
+        elapsed = 0.0
+        while True:
+            elapsed = time.monotonic() - started
+            if elapsed > max_wait_sec:
+                status_out = "timeout"
+                break
+            res = conn.call(
+                "BAPI_XBP_JOB_STATUS_GET",
+                JOBNAME=jobname,
+                JOBCOUNT=jobcount,
+                EXTERNAL_USER_NAME=user,
+            )
+            st = (res.get("STATUS") or "").strip()
+            if st in _DONE_STATUSES:
+                status_out = _STATUS_TO_OUT[st]
+                break
+            time.sleep(JOB_POLL_INTERVAL)
+
+        runtime_sec = int(elapsed)
+
+        # Joblog (always).
+        log_res = conn.call(
+            "BAPI_XBP_JOB_JOBLOG_READ",
+            JOBNAME=jobname,
+            JOBCOUNT=jobcount,
+            EXTERNAL_USER_NAME=user,
+        )
+        joblog = _parse_joblog(log_res.get("JOB_PROTOCOL_NEW", []) or [])
+
+        if status_out == "aborted":
+            t1 = time.gmtime()
+            try:
+                syslog_rows = _read_syslog(conn, user, t0, t1)
+                dump = _parse_syslog_for_dump(syslog_rows) or _detect_dump_in_joblog(joblog)
+            except Exception:
+                dump = _detect_dump_in_joblog(joblog)
+    finally:
+        _xmi_logoff(conn)
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    return {
+        "status": status_out,
+        "jobname": jobname,
+        "jobcount": jobcount,
+        "runtime_sec": runtime_sec,
+        "joblog": joblog,
+        "dump": dump,
+    }
