@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A Claude Code plugin (`sap-rfc`) that provides two MCP servers for SAP connectivity and three skills for connection management. Credentials are stored in the OS keyring (Windows Credential Manager). `rfc-mcp` uses `pyrfc` for read-only RFC calls; `adt-mcp` uses HTTP/ADT for write + check flows.
+A Claude Code plugin (`sap-rfc`) that provides two MCP servers for SAP connectivity and three skills for connection management. Credentials are stored in the OS keyring (Windows Credential Manager). `rfc-mcp` uses `pyrfc` for RFC calls (read + write); `adt-mcp` uses HTTP/ADT for write + check flows. Both can write — choose RFC when ADT isn't reachable.
 
 ## Architecture
 
-Plugin layout follows a monorepo under `plugins/sap-rfc/servers/<name>-mcp/`. Two servers: `rfc-mcp` (read) and `adt-mcp` (write + check).
+Plugin layout follows a monorepo under `plugins/sap-rfc/servers/<name>-mcp/`. Two servers: `rfc-mcp` (read + write) and `adt-mcp` (write + check).
 
 - **`plugins/sap-rfc/servers/rfc-mcp/`** — FastMCP server (stdio). Read-only SAP RFC tools: `ping`, `read_source`, `read_table`, `get_table_structure`, `get_function_module_interface`, `search_objects`. Each call opens a fresh `pyrfc.Connection` from OS-keyring credentials and closes it.
   - `tools/` — one module per tool group: `system.py` (ping), `source.py` (read_source), `ddic.py` (search_objects, get_table_structure, read_table), `fm.py` (get_function_module_interface).
@@ -39,6 +39,9 @@ Plugin layout follows a monorepo under `plugins/sap-rfc/servers/<name>-mcp/`. Tw
 | `get_function_module_interface(name, with_source?)` | `RPY_FUNCTIONMODULE_READ_NEW` | with_source=True reads `NEW_SOURCE` (full-width lines) and dumps to a file. Old `RPY_FUNCTIONMODULE_READ` caps at 72 chars and raises SAP msg 180 on many modern FMs. |
 | `read_text_pool(name, language?)` | `RPY_PROGRAM_READ` (TEXTELEMENTS) | Reads report title / text symbols / selection texts. Language auto-resolved from TRDIR.RLOAD → logon fallback. 8-space sel-text prefix is stripped. |
 | `update_text_pool(name, entries, transport, language?)` | `RPY_TEXTELEMENTS_INSERT` | Read-merge-write by (id,key). Auto re-applies 8-space prefix for S entries. Devclass resolved from TADIR. Transport required. |
+| `syntax_check_rfc(name, kind?)` | `RS_ABAP_SYNTAX_CHECK_E` | Returns errors/warnings/infos as structured rows with include, line, col, keyword, msg-no, message. Replaces SIW_RFC_SYNTAX_CHECK (one-error / no include). |
+| `upload_program(name, source_file, transport?, devclass?, description?, program_type?)` | `RPY_PROGRAM_INSERT` / `RPY_INCLUDE_INSERT` / `RPY_INCLUDE_UPDATE` | Auto-detects create vs update via RPY_PROGRAM_READ. Updates routed through RPY_INCLUDE_UPDATE because RPY_PROGRAM_UPDATE is not RFC-enabled. Auto-resolves open TR from E070. Auto-activates. Runs syntax_check_rfc post-upload. |
+| `test_run(name, params?, select_options?, variant?, max_wait_sec?)` | `BAPI_XMI_LOGON` + `BAPI_XBP_JOB_*` + `RSLG_READ_FILE` + `BAPI_XMI_LOGOFF` | Submits report as XBP job, polls until done/aborted/timeout. On abort, correlates SM21 syslog by user/time/msg-class AB0-AB2 to extract runtime-error name + TID. Joblog returned always; dump info structured. |
 | `read_form(file_path, render?, render_html?)` | — (offline) | Parses a dialect-B SAPscript form export (`RSTXSCRP` output). Produces a text outline, optional wireframe PNG (Pillow), and optional interactive HTML preview (browser). No SAP connection required. Dialect A, writes, and live SAP reads are out of scope for v1. |
 
 Source-returning tools (`read_source`, `get_function_module_interface` with `with_source=True`) write `.abap` files to a persistent cache dir (`sap-rfc-cache` under the system temp dir) and return `{source_file, line_count}` — Claude reads the file via the Read tool only when needed. This avoids embedding large ABAP listings in the tool response.
@@ -54,6 +57,25 @@ Apply when calling `mcp__plugin_sap-rfc_rfc-mcp__read_form`.
 **Dialect B only.** Files starting with `SFORM` are accepted. `SSTYL` / `SDOKU` are rejected (different object kinds — not yet supported). Dialect-A files (standard texts / plain ITF) are rejected with `UnsupportedDialect`.
 
 **No writes / edits.** This is a read-only tool. Editing / re-importing a SAPscript form is a later tool.
+
+## RFC Write Tools (syntax_check_rfc / upload_program / test_run)
+
+Apply when calling these three tools.
+
+**`syntax_check_rfc` checks the uploaded version, not local files.** To check edited source, upload first via `upload_program`, then call `syntax_check_rfc`. The `kind` parameter is informational; the underlying FM accepts any TRDIR entry.
+
+**`upload_program` is a write tool — confirm before calling.** Per CLAUDE.md confirmation rules, summarize parameters (name, kind, transport, devclass, lines) and wait for explicit user approval before invoking.
+- Updates always go through `RPY_INCLUDE_UPDATE` (works for programs and includes alike). The seemingly natural `RPY_PROGRAM_UPDATE` is NOT RFC-enabled on current S/4 releases.
+- Source goes via `SOURCE_EXTENDED` (255-char rows). Lines longer than 255 chars are rejected with `LineTooLong` listing the offending line numbers.
+- Transport: pass explicitly, or omit and the tool picks the most recent open Workbench/Customizing TR for the connection user from E070. `$TMP` skips TR resolution entirely.
+- Title: re-supplied automatically on updates from the existing TRDIRT row in the connection language — do not need to pass `description` on update.
+- A clean post-upload `syntax_check_rfc` is folded into the response under `syntax`.
+
+**`test_run` is async-via-XBP.** Reports are submitted as background jobs (XBP), so this is **not** synchronous SUBMIT — it polls until the job ends or the wall clock exceeds `max_wait_sec`.
+- Selection screen: pass values via `params` (PARAMETERS) and `select_options` (SELECT-OPTIONS ranges) OR a saved `variant`. Mixing variant with the others returns `MutuallyExclusive`.
+- On `status='aborted'`, the tool reads SM21 (`RSLG_READ_FILE`) filtered by user + time window + msg-class `AB0-AB2` to extract the runtime-error name and TID. If syslog returns nothing it falls back to parsing the joblog.
+- On `status='timeout'`, the job is **not** cancelled — caller can poll via SM37 using the returned `jobname/jobcount`.
+- v1 supports executable programs only (TRDIR-SUBC='1'). Class methods, FMs, and module pools are out of scope.
 
 ## Tool Usage Rules
 
