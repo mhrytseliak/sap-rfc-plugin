@@ -12,6 +12,8 @@ All write FMs auto-activate.
 """
 from __future__ import annotations
 
+from where_clause import chunk_where
+
 ABAP_LINE_MAX = 255
 
 
@@ -71,3 +73,44 @@ def _decide_action(conn, name: str, program_type: str) -> tuple[str, dict]:
         "update",
         {"program_type": (existing.get("PROG_TYPE") or "").strip()},
     )
+
+
+class NoOpenTransport(Exception):
+    """No modifiable Workbench/Customizing TR found for the user."""
+
+
+def _resolve_transport(conn, user: str) -> str:
+    """Return the most recent open TR (Workbench/Customizing) for `user`.
+
+    Raises NoOpenTransport if none exists.
+    """
+    user = user.upper()
+    where = (
+        "STATUS IN ('D','L') AND "
+        f"AS4USER EQ '{user}' AND "
+        "TRFUNCTION IN ('K','S')"
+    )
+    result = conn.call(
+        "RFC_READ_TABLE",
+        QUERY_TABLE="E070",
+        DELIMITER="|",
+        FIELDS=[
+            {"FIELDNAME": "TRKORR"},
+            {"FIELDNAME": "AS4DATE"},
+            {"FIELDNAME": "AS4TIME"},
+        ],
+        OPTIONS=[{"TEXT": c} for c in chunk_where(where)],
+        ROWCOUNT=200,
+    )
+    rows = []
+    for line in result.get("DATA", []):
+        parts = [p.strip() for p in line["WA"].split("|")]
+        if len(parts) >= 3 and parts[0]:
+            rows.append((parts[0], parts[1], parts[2]))
+    if not rows:
+        raise NoOpenTransport(
+            f"No modifiable workbench/customizing transport found for user {user}. "
+            "Create one in SE09 or pass 'transport' explicitly."
+        )
+    rows.sort(key=lambda r: (r[1], r[2]), reverse=True)
+    return rows[0][0]

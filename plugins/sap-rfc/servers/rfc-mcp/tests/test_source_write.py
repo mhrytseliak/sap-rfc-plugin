@@ -60,3 +60,46 @@ def test_decide_action_update_when_exists():
     action, info = _decide_action(conn, "ZEXIST", "1")
     assert action == "update"
     assert info["program_type"] == "1"
+
+
+from tools.source_write import _resolve_transport, NoOpenTransport
+
+
+def _fake_e070_response(rows: list[tuple[str, str, str]]) -> dict:
+    """rows: list of (TRKORR, AS4DATE, AS4TIME)."""
+    return {
+        "FIELDS": [
+            {"FIELDNAME": "TRKORR"},
+            {"FIELDNAME": "AS4DATE"},
+            {"FIELDNAME": "AS4TIME"},
+        ],
+        "DATA": [{"WA": f"{t}|{d}|{tm}"} for t, d, tm in rows],
+    }
+
+
+def test_resolve_transport_picks_most_recent():
+    conn = MagicMock()
+    conn.call.return_value = _fake_e070_response(
+        [
+            ("DEVK900100", "20260301", "120000"),
+            ("DEVK900200", "20260510", "090000"),
+            ("DEVK900150", "20260408", "150000"),
+        ]
+    )
+    assert _resolve_transport(conn, "MHRYTSELIAK") == "DEVK900200"
+
+
+def test_resolve_transport_raises_when_none():
+    conn = MagicMock()
+    conn.call.return_value = _fake_e070_response([])
+    with pytest.raises(NoOpenTransport):
+        _resolve_transport(conn, "MHRYTSELIAK")
+
+
+def test_resolve_transport_uppercases_user():
+    conn = MagicMock()
+    conn.call.return_value = _fake_e070_response([("DEVK900200", "20260510", "090000")])
+    _resolve_transport(conn, "mhrytseliak")
+    _, kwargs = conn.call.call_args
+    options_text = " ".join(o["TEXT"] for o in kwargs["OPTIONS"])
+    assert "AS4USER EQ 'MHRYTSELIAK'" in options_text
