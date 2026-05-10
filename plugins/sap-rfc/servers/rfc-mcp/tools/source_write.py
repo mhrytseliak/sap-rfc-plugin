@@ -15,6 +15,7 @@ from __future__ import annotations
 import keyring
 
 from connection import get_connection, SERVICE_NAME
+from timeout import with_timeout, RFCTimeout
 from where_clause import chunk_where
 
 ABAP_LINE_MAX = 255
@@ -264,3 +265,71 @@ def _upload_program_impl(
         "lines_uploaded": len(lines),
         "syntax": syntax,
     }
+
+
+def register(mcp):
+    @mcp.tool()
+    def upload_program(
+        name: str,
+        source_file: str,
+        transport: str | None = None,
+        devclass: str | None = None,
+        description: str | None = None,
+        program_type: str = "1",
+    ) -> dict:
+        """Upload an ABAP program or include via RFC, auto-activating it.
+
+        Routes through:
+          - RPY_PROGRAM_INSERT   for new executable / module pool / class pool / etc.
+          - RPY_INCLUDE_INSERT   for new includes (program_type='I')
+          - RPY_INCLUDE_UPDATE   for existing objects (programs and includes alike)
+
+        WHY RPY_INCLUDE_UPDATE for both: RPY_PROGRAM_UPDATE is NOT RFC-enabled
+        on current S/4 releases, but RPY_INCLUDE_UPDATE operates on TRDIR by
+        name and writes via INSERT REPORT … STATE 'A' regardless of SUBC. So
+        it covers programs too. Verified by reading the FM source on DS4.
+
+        After the upload completes, runs `syntax_check_rfc` automatically and
+        returns the result so the caller sees breakage in the same response.
+
+        IMPORTANT: write tool — Claude must summarize parameters and wait for
+        explicit user approval before calling.
+
+        Args:
+            name: Program or include name.
+            source_file: Local path to the .abap source file (UTF-8).
+            transport: Existing TR. If omitted, the most recent open
+                       Workbench/Customizing TR for the connection user is
+                       resolved from E070. Ignored when devclass='$TMP'.
+            devclass: Required when creating. Use '$TMP' for local objects.
+            description: Title — required when creating. Re-supplied
+                         automatically on updates from the existing TRDIR title.
+            program_type: SAP TRDIR-SUBC. '1'=executable (default), 'I'=include,
+                          'M'=module pool, 'S'=subroutine pool, 'J'=interface
+                          pool, 'K'=class pool, 'F'=function group. Used only
+                          when creating.
+
+        Returns:
+            {action, name, kind, transport, devclass, lines_uploaded, syntax}
+            on success, or {error, detail} on failure.
+        """
+        from pyrfc import LogonError, CommunicationError, ABAPApplicationError
+        try:
+            return with_timeout(
+                _upload_program_impl,
+                name, source_file, transport, devclass, description, program_type,
+            )
+        except RFCTimeout as e:
+            return {"error": "Timeout", "detail": str(e)}
+        except NoOpenTransport as e:
+            return {"error": "NoOpenTransport", "detail": str(e)}
+        except LogonError as e:
+            return {"error": "LogonError", "detail": str(e)}
+        except CommunicationError as e:
+            return {"error": "CommunicationError", "detail": str(e)}
+        except ABAPApplicationError as e:
+            return {"error": "ABAPApplicationError", "detail": str(e)}
+        except FileNotFoundError as e:
+            return {"error": "FileNotFound", "detail": str(e)}
+        except Exception as e:
+            return {"error": type(e).__name__, "detail": str(e)}
