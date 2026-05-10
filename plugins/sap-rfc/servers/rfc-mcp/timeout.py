@@ -22,6 +22,8 @@ from connection import SERVICE_NAME
 
 DEFAULT_RFC_TIMEOUT = 60
 PING_TIMEOUT = 10
+XMI_TIMEOUT = 30
+JOB_POLL_INTERVAL = 2  # seconds between BAPI_XBP_JOB_STATUS_GET polls
 
 
 def get_rfc_timeout(default: int = DEFAULT_RFC_TIMEOUT) -> int:
