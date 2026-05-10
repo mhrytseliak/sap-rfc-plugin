@@ -103,3 +103,114 @@ def test_resolve_transport_uppercases_user():
     _, kwargs = conn.call.call_args
     options_text = " ".join(o["TEXT"] for o in kwargs["OPTIONS"])
     assert "AS4USER EQ 'MHRYTSELIAK'" in options_text
+
+
+from tools.source_write import _upload_program_impl
+
+
+def test_upload_program_creates_executable(monkeypatch, tmp_path):
+    src = tmp_path / "x.abap"
+    src.write_text("REPORT zx.\nWRITE 'ok'.\n")
+
+    conn = MagicMock()
+    from pyrfc import ABAPApplicationError as _A
+
+    calls = []
+
+    def fake_call(fm_name, **kwargs):
+        calls.append((fm_name, kwargs))
+        if fm_name == "RPY_PROGRAM_READ":
+            raise _A(message="Number:003 NOT_FOUND")
+        if fm_name == "RFC_READ_TABLE" and kwargs.get("QUERY_TABLE") == "E070":
+            return {
+                "FIELDS": [{"FIELDNAME": "TRKORR"}, {"FIELDNAME": "AS4DATE"}, {"FIELDNAME": "AS4TIME"}],
+                "DATA": [{"WA": "DEVK900200|20260510|090000"}],
+            }
+        return {}
+
+    conn.call.side_effect = fake_call
+    monkeypatch.setattr("tools.source_write.get_connection", lambda: conn)
+    monkeypatch.setattr("tools.source_write._post_syntax_check", lambda name, kind: {"ok": True, "errors": [], "warnings": [], "infos": [], "subrc": 0})
+    monkeypatch.setattr("tools.source_write.keyring.get_password", lambda *_: "MHRYTSELIAK")
+
+    out = _upload_program_impl(
+        name="ZNEW",
+        source_file=str(src),
+        transport=None,
+        devclass="$TMP",
+        description="Test",
+        program_type="1",
+    )
+    assert out["action"] == "created"
+    assert out["kind"] == "program"
+    assert out["transport"] == ""  # $TMP skips TR
+    assert out["lines_uploaded"] == 2
+    assert out["syntax"]["ok"] is True
+    fm_names = [c[0] for c in calls]
+    assert "RPY_PROGRAM_INSERT" in fm_names
+
+
+def test_upload_program_rejects_overlong_line(monkeypatch, tmp_path):
+    src = tmp_path / "x.abap"
+    src.write_text("REPORT zx.\n" + "X" * 300 + "\n")
+    monkeypatch.setattr("tools.source_write.get_connection", lambda: MagicMock())
+    monkeypatch.setattr("tools.source_write.keyring.get_password", lambda *_: "ME")
+    out = _upload_program_impl(
+        name="ZX", source_file=str(src), transport="DEVK900200",
+        devclass="$TMP", description="T", program_type="1",
+    )
+    assert out["error"] == "LineTooLong"
+    assert "2" in out["detail"]
+
+
+def test_upload_program_create_requires_devclass(monkeypatch, tmp_path):
+    src = tmp_path / "x.abap"
+    src.write_text("REPORT zx.\n")
+    from pyrfc import ABAPApplicationError as _A
+    conn = MagicMock()
+    conn.call.side_effect = _A(message="Number:003 NOT_FOUND")
+    monkeypatch.setattr("tools.source_write.get_connection", lambda: conn)
+    monkeypatch.setattr("tools.source_write.keyring.get_password", lambda *_: "ME")
+    out = _upload_program_impl(
+        name="ZNEW", source_file=str(src), transport="DEVK900200",
+        devclass=None, description="T", program_type="1",
+    )
+    assert out["error"] == "MissingArgument"
+    assert "devclass" in out["detail"].lower()
+
+
+def test_upload_program_updates_existing(monkeypatch, tmp_path):
+    src = tmp_path / "x.abap"
+    src.write_text("REPORT zx.\nWRITE 'v2'.\n")
+
+    conn = MagicMock()
+    calls = []
+
+    def fake_call(fm_name, **kwargs):
+        calls.append((fm_name, kwargs))
+        if fm_name == "RPY_PROGRAM_READ":
+            return {"PROG_INF": {"PROG_TYPE": "1"}}
+        if fm_name == "RFC_READ_TABLE" and kwargs.get("QUERY_TABLE") == "TRDIRT":
+            return {
+                "FIELDS": [{"FIELDNAME": "TEXT"}, {"FIELDNAME": "SPRSL"}],
+                "DATA": [{"WA": "Existing Title|E"}],
+            }
+        return {}
+
+    conn.call.side_effect = fake_call
+    monkeypatch.setattr("tools.source_write.get_connection", lambda: conn)
+    monkeypatch.setattr("tools.source_write._post_syntax_check", lambda *_: {"ok": True, "errors": [], "warnings": [], "infos": [], "subrc": 0})
+    monkeypatch.setattr("tools.source_write.keyring.get_password", lambda *_: "ME")
+
+    out = _upload_program_impl(
+        name="ZEXIST", source_file=str(src), transport="DEVK900200",
+        devclass=None, description=None, program_type="1",
+    )
+    assert out["action"] == "updated"
+    fm_names = [c[0] for c in calls]
+    assert "RPY_INCLUDE_UPDATE" in fm_names
+    update_kwargs = next(c[1] for c in calls if c[0] == "RPY_INCLUDE_UPDATE")
+    # Existing title is carried forward (fetched from TRDIRT).
+    assert update_kwargs["TITLE_STRING"] == "Existing Title"
+    assert update_kwargs["INCLUDE_NAME"] == "ZEXIST"
+    assert update_kwargs["TRANSPORT_NUMBER"] == "DEVK900200"

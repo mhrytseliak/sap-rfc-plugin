@@ -12,6 +12,9 @@ All write FMs auto-activate.
 """
 from __future__ import annotations
 
+import keyring
+
+from connection import get_connection, SERVICE_NAME
 from where_clause import chunk_where
 
 ABAP_LINE_MAX = 255
@@ -114,3 +117,150 @@ def _resolve_transport(conn, user: str) -> str:
         )
     rows.sort(key=lambda r: (r[1], r[2]), reverse=True)
     return rows[0][0]
+
+
+def _post_syntax_check(name: str, kind: str) -> dict:
+    """Indirection so tests can monkeypatch without crossing into syntax module."""
+    from tools.syntax import _syntax_check_impl
+    return _syntax_check_impl(name, kind)
+
+
+def _read_title(conn, name: str) -> str:
+    """Return the existing report title from TRDIRT for the connection's logon language.
+
+    Falls back to any non-empty title row, then to empty string. RPY_INCLUDE_UPDATE
+    requires TITLE_STRING to be passed; we re-supply the existing title so an
+    update doesn't blank it.
+    """
+    lang = (keyring.get_password(SERVICE_NAME, "lang") or "EN").upper()[:1]
+    where = f"NAME EQ '{name}'"
+    result = conn.call(
+        "RFC_READ_TABLE",
+        QUERY_TABLE="TRDIRT",
+        DELIMITER="|",
+        FIELDS=[{"FIELDNAME": "TEXT"}, {"FIELDNAME": "SPRSL"}],
+        OPTIONS=[{"TEXT": where}],
+        ROWCOUNT=20,
+    )
+    rows = []
+    for line in result.get("DATA", []):
+        parts = [p.strip() for p in line["WA"].split("|")]
+        if len(parts) >= 1 and parts[0]:
+            rows.append((parts[0], parts[1] if len(parts) > 1 else ""))
+    # Prefer the row matching the connection language.
+    for text, sprsl in rows:
+        if sprsl == lang:
+            return text
+    return rows[0][0] if rows else ""
+
+
+_SUBC_TO_KIND = {
+    "1": "program",
+    "I": "include",
+    "M": "modulepool",
+    "S": "subroutine_pool",
+    "J": "interface_pool",
+    "K": "class_pool",
+    "F": "function_group",
+}
+
+
+def _upload_program_impl(
+    name: str,
+    source_file: str,
+    transport: str | None,
+    devclass: str | None,
+    description: str | None,
+    program_type: str,
+) -> dict:
+    name = name.upper()
+    program_type = (program_type or "1").upper()
+
+    # 1. Read + validate source.
+    with open(source_file, "r", encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    bad = _validate_lines(lines)
+    if bad:
+        return {
+            "error": "LineTooLong",
+            "detail": f"Source lines exceed {ABAP_LINE_MAX} chars at line(s): "
+            + ", ".join(str(b) for b in bad),
+        }
+
+    conn = get_connection()
+    try:
+        # 2. Probe + branch.
+        action, info = _decide_action(conn, name, program_type)
+
+        # 3. Validate create-only args.
+        if action in ("create_program", "create_include"):
+            if not devclass:
+                return {
+                    "error": "MissingArgument",
+                    "detail": "devclass is required when creating a new object",
+                }
+            if not description:
+                return {
+                    "error": "MissingArgument",
+                    "detail": "description is required when creating a new object",
+                }
+
+        # 4. Resolve transport unless $TMP / unless caller passed one.
+        is_tmp = (devclass or "").upper() == "$TMP"
+        if transport is None and not is_tmp:
+            user = keyring.get_password(SERVICE_NAME, "user") or ""
+            transport = _resolve_transport(conn, user)
+        elif transport is None and is_tmp:
+            transport = ""
+
+        src_rows = _to_source_extended(lines)
+
+        # 5. Call the right write FM.
+        if action == "create_program":
+            conn.call(
+                "RPY_PROGRAM_INSERT",
+                PROGRAM_NAME=name,
+                PROGRAM_TYPE=program_type,
+                TITLE_STRING=description,
+                DEVELOPMENT_CLASS=(devclass or "").upper(),
+                TRANSPORT_NUMBER=transport,
+                SUPPRESS_DIALOG="X",
+                SOURCE_EXTENDED=src_rows,
+            )
+            kind_out = _SUBC_TO_KIND.get(program_type, "program")
+        elif action == "create_include":
+            conn.call(
+                "RPY_INCLUDE_INSERT",
+                INCLUDE_NAME=name,
+                TITLE_STRING=description,
+                DEVELOPMENT_CLASS=(devclass or "").upper(),
+                TRANSPORT_NUMBER=transport,
+                SOURCE_EXTENDED=src_rows,
+            )
+            kind_out = "include"
+        else:  # update
+            existing_title = _read_title(conn, name)
+            conn.call(
+                "RPY_INCLUDE_UPDATE",
+                INCLUDE_NAME=name,
+                TITLE_STRING=existing_title,
+                TRANSPORT_NUMBER=transport,
+                SOURCE_EXTENDED=src_rows,
+            )
+            kind_out = _SUBC_TO_KIND.get(info.get("program_type", "1"), "program")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    syntax = _post_syntax_check(name, kind_out)
+    return {
+        "action": "created" if action.startswith("create") else "updated",
+        "name": name,
+        "kind": kind_out,
+        "transport": transport or "",
+        "devclass": (devclass or "").upper(),
+        "lines_uploaded": len(lines),
+        "syntax": syntax,
+    }
