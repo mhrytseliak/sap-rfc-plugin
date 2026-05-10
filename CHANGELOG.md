@@ -5,6 +5,46 @@ All notable changes to this plugin are documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-05-10
+
+### Added
+
+- **`syntax_check_rfc`** (rfc-mcp). Full ABAP syntax check via
+  `RS_ABAP_SYNTAX_CHECK_E`. Returns errors / warnings / infos as structured
+  rows with include name, line, column, keyword, msg-no, message text. Replaces
+  reliance on `SIW_RFC_SYNTAX_CHECK` (one error, no include name).
+- **`upload_program`** (rfc-mcp). Create or update an ABAP program / include
+  via RFC. Auto-routes through `RPY_PROGRAM_INSERT` / `RPY_INCLUDE_INSERT` /
+  `RPY_INCLUDE_UPDATE` based on existence (the seemingly natural
+  `RPY_PROGRAM_UPDATE` is NOT RFC-enabled on modern S/4 — `RPY_INCLUDE_UPDATE`
+  works for programs too because it operates on TRDIR by name). Auto-resolves
+  the most recent open Workbench/Customizing TR from E070 when caller omits
+  `transport`. Auto-activates. Runs `syntax_check_rfc` post-upload and folds
+  the result into the response.
+- **`test_run`** (rfc-mcp). Submits a report as a one-step XBP background job
+  (`BAPI_XMI_LOGON` → `BAPI_XBP_JOB_OPEN/ADD_ABAP_STEP/CLOSE/START_ASAP`),
+  polls `BAPI_XBP_JOB_STATUS_GET` until done / aborted / cancelled / timeout,
+  and returns the joblog plus a structured `dump` dict on abort. Selection
+  screen passes through `params` (PARAMETERS) and `select_options`
+  (SELECT-OPTIONS) or a saved `variant`.
+- **Three-tier dump correlation** for `test_run` aborts: SNAP via
+  `RFC_READ_TABLE` (TLV-parsed FLIST tags FC/AP/AI/AL/TD — gives runtime-error
+  name, TID, program, include, source line) → SM21 via `RSLG_READ_FILE` →
+  joblog text scrape. SNAP is readable on modern S/4 releases despite older
+  docs claiming it's unreadable via RFC.
+- **Auto-cleanup** for `test_run`. Jobs that reach a terminal state
+  (finished / aborted / cancelled) are deleted via `BAPI_XBP_JOB_DELETE`
+  after dump correlation. Timeout jobs are left in TBTCO so the caller can
+  still poll them via SM37. SNAP rows + ST22 dumps are NOT deleted (audit
+  trail preserved).
+
+### Changed
+
+- **rfc-mcp is no longer read-only.** The server now offers four write tools:
+  `update_text_pool` (existing), `upload_program`, `syntax_check_rfc` (probe-
+  style), `test_run`. `adt-mcp` remains the HTTP path; the two are
+  alternatives — choose RFC when ADT isn't reachable.
+
 ## [0.2.0] — 2026-04-29
 
 ### Added

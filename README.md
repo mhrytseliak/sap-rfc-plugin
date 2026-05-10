@@ -2,7 +2,7 @@
 
 Claude Code plugin for SAP systems. Provides two MCP servers and three connection-management skills:
 
-- **`rfc-mcp`** — 9 tools over RFC (`pyrfc`). Read-only except `update_text_pool`.
+- **`rfc-mcp`** — 12 tools over RFC (`pyrfc`). Read + write. Source upload, syntax check, and dump-detecting test execution work without ADT — for systems where ADT is unreachable.
 - **`adt-mcp`** — 10 write + check tools over ADT (HTTP). Auto-discovers the ADT base URL via `ICM_GET_INFO`.
 
 ## Prerequisites

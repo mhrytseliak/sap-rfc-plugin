@@ -1,6 +1,6 @@
 # rfc-mcp
 
-SAP RFC MCP server. Source / table / DDIC / function module / text pool reads + SAPscript form parser via `pyrfc`. Read-only **except** `update_text_pool` — that tool has no ADT counterpart on current releases, so it lives here.
+SAP RFC MCP server. Read + write over `pyrfc`. Source / table / DDIC / FM / text pool reads, SAPscript form parser, plus a write path that doesn't need ADT: source upload, syntax check, and dump-detecting test execution. Designed for systems where ADT is not reachable.
 
 Connection setup: `/sap-connect` (see plugin root). Each tool call opens a fresh `pyrfc.Connection` from OS-keyring credentials and closes it.
 
@@ -16,6 +16,9 @@ Connection setup: `/sap-connect` (see plugin root). Each tool call opens a fresh
 | `get_function_module_interface` | `RPY_FUNCTIONMODULE_READ_NEW` | FM signature (+ optional source). |
 | `read_text_pool` | `RPY_PROGRAM_READ` (TEXTELEMENTS) | Report title / text symbols / sel-texts. |
 | `update_text_pool` | `RPY_TEXTELEMENTS_INSERT` | Read-merge-write text pool. Transport-bound. |
+| `syntax_check_rfc` | `RS_ABAP_SYNTAX_CHECK_E` | Full SLIN-style syntax check on the uploaded version. Returns errors / warnings / infos with include + line + col + msg-no. |
+| `upload_program` | `RPY_PROGRAM_INSERT` / `RPY_INCLUDE_INSERT` / `RPY_INCLUDE_UPDATE` | Create or update programs and includes. Auto-resolves open TR from E070, auto-activates, runs syntax check post-upload. |
+| `test_run` | `BAPI_XMI_LOGON` + `BAPI_XBP_JOB_*` + `RFC_READ_TABLE` (SNAP) + `RSLG_READ_FILE` | Submit report as XBP job, poll until done / aborted / timeout. On abort, returns structured dump info (runtime error, TID, program, include, line) parsed from SNAP. Auto-deletes terminal jobs. |
 | `read_form` | (offline) | Parse a SAPscript form export (`.FOR`) into outline + PNG + HTML. No SAP needed. |
 
 ## Hard rules
@@ -24,9 +27,9 @@ Connection setup: `/sap-connect` (see plugin root). Each tool call opens a fresh
 
 No tool works until `/sap-connect` has stored credentials in the keyring. `LogonError` / *credentials not found* → run `/sap-connect`. If unsure which system is connected, call `ping` — it returns SID and release.
 
-### 2. Writes belong to adt-mcp (one exception)
+### 2. Two write paths — choose the one that fits
 
-The only writing tool here is `update_text_pool`. Everything else — source uploads, activation, syntax checks, transport creation, code inspector — lives in **adt-mcp** and requires ADT to be reachable. Never claim you wrote / activated anything from rfc-mcp other than text pool entries.
+**rfc-mcp** writes via standard SAP RFC FMs: `update_text_pool`, `upload_program`, `test_run`. No ADT needed. **adt-mcp** writes via HTTP/ADT: `update_source`, `activate`, `syntax_check`, `transport_create`, `transport_of_object`, `create_program`, `create_include`, `create_class`, `code_inspector`. Use rfc-mcp when ADT isn't reachable; use adt-mcp when you need ADT-only flows (class shells, separate activate step, code inspector). The two are alternatives — don't mix tools for one logical write.
 
 ### 3. Discover → schema → data
 
@@ -106,6 +109,30 @@ SAP stores `ID='S'` entries with 8 leading spaces for field-label alignment. `re
 **Dialect B only.** Files starting with `SFORM` are accepted. `SSTYL` / `SDOKU` are rejected (different object kinds — not yet supported). Dialect-A files (standard texts / plain ITF) are rejected with `UnsupportedDialect`.
 
 **No writes / edits.** This is a read-only tool. Editing / re-importing a SAPscript form is a later tool.
+
+### `syntax_check_rfc`
+
+**Checks the uploaded version, not local files.** To check edited source, upload it first via `upload_program` and then call `syntax_check_rfc`. The `kind` parameter is informational; the underlying FM accepts any TRDIR entry.
+
+### `upload_program`
+
+**Write tool — confirm before calling.** Summarize parameters (name, kind, transport, devclass, lines) and wait for explicit user approval before invoking.
+
+- Updates always go through `RPY_INCLUDE_UPDATE` (works for programs and includes alike). The seemingly natural `RPY_PROGRAM_UPDATE` is NOT RFC-enabled on current S/4 releases.
+- Source goes via `SOURCE_EXTENDED` (255-char rows). Lines longer than 255 chars are rejected with `LineTooLong` listing the offending line numbers.
+- **Transport.** Pass explicitly, or omit and the tool picks the most recent open Workbench/Customizing TR for the connection user from E070. `$TMP` skips TR resolution entirely.
+- **Title.** Re-supplied automatically on updates from the existing TRDIRT row in the connection language — no need to pass `description` on update.
+- A clean post-upload `syntax_check_rfc` is folded into the response under `syntax`.
+
+### `test_run`
+
+**Async via XBP, not synchronous SUBMIT.** The report runs as a one-step background job; the tool polls until the job ends or `max_wait_sec` runs out.
+
+- **Selection screen.** Pass values via `params` (PARAMETERS) and `select_options` (SELECT-OPTIONS ranges) OR a saved `variant`. Mixing variant with the others returns `MutuallyExclusive`.
+- **Dump correlation on `status='aborted'`.** Three-tier: SNAP via `RFC_READ_TABLE` (header row SEQNO='000', TLV-parsed FLIST tags `FC`/`AP`/`AI`/`AL`/`TD` for runtime-error name + TID + program + include + line) → SM21 via `RSLG_READ_FILE` → joblog scrape. The SNAP path is primary because modern S/4 makes the table readable.
+- **`status='timeout'`.** Job is **not** cancelled — caller can poll later via SM37 with the returned `jobname`/`jobcount`.
+- **Auto-cleanup.** Terminal jobs (finished / aborted / cancelled) are deleted via `BAPI_XBP_JOB_DELETE` after dump correlation. Timeout jobs are left in TBTCO. SNAP rows + ST22 dumps are NOT deleted (audit trail preserved).
+- v1 supports executable programs only (TRDIR-SUBC='1'). Class methods, FMs, and module pools are out of scope.
 
 ## Token discipline
 
