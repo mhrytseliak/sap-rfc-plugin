@@ -173,6 +173,26 @@ def test_test_run_finished_clean(monkeypatch):
     assert out["status"] == "finished"
     assert out["dump"] is None
     assert out["jobcount"] == "12345678"
+    # Cleanup: terminal job is auto-deleted.
+    fm_calls = [c.args[0] for c in conn.call.call_args_list]
+    assert "BAPI_XBP_JOB_DELETE" in fm_calls
+
+
+def test_test_run_timeout_does_not_delete_job(monkeypatch):
+    """Timeout jobs stay scheduled — caller may want to poll later."""
+    conn = MagicMock()
+    conn.call.side_effect = _success_dispatch(["R"] * 100)
+    monkeypatch.setattr("tools.test_run.get_connection", lambda: conn)
+    monkeypatch.setattr("tools.test_run.keyring.get_password", lambda *_: "ME")
+    monkeypatch.setattr("tools.test_run.JOB_POLL_INTERVAL", 0)
+    times = iter([0.0, 0.5, 100.0])
+    monkeypatch.setattr("tools.test_run.time.monotonic", lambda: next(times))
+
+    out = _test_run_impl("ZSLOW", None, None, None, max_wait_sec=5)
+
+    assert out["status"] == "timeout"
+    fm_calls = [c.args[0] for c in conn.call.call_args_list]
+    assert "BAPI_XBP_JOB_DELETE" not in fm_calls
 
 
 def test_test_run_aborted_pulls_snap(monkeypatch):

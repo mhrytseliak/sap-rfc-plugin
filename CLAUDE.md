@@ -73,8 +73,9 @@ Apply when calling these three tools.
 
 **`test_run` is async-via-XBP.** Reports are submitted as background jobs (XBP), so this is **not** synchronous SUBMIT — it polls until the job ends or the wall clock exceeds `max_wait_sec`.
 - Selection screen: pass values via `params` (PARAMETERS) and `select_options` (SELECT-OPTIONS ranges) OR a saved `variant`. Mixing variant with the others returns `MutuallyExclusive`.
-- On `status='aborted'`, the tool reads SM21 (`RSLG_READ_FILE`) filtered by user + time window + msg-class `AB0-AB2` to extract the runtime-error name and TID. If syslog returns nothing it falls back to parsing the joblog.
+- On `status='aborted'`, the tool reads SNAP via `RFC_READ_TABLE` (header row SEQNO='000', TLV-parsed FLIST tags `FC`/`AP`/`AI`/`AL`/`TD`) to extract the runtime-error name, TID, program, include, and source line. SM21 (`RSLG_READ_FILE`) and joblog parsing are fallbacks if SNAP is empty/unreachable.
 - On `status='timeout'`, the job is **not** cancelled — caller can poll via SM37 using the returned `jobname/jobcount`.
+- **Auto-cleanup**: jobs in terminal states (`finished`/`aborted`/`cancelled`) are deleted via `BAPI_XBP_JOB_DELETE` after dump correlation. Timeout jobs are left in TBTCO so the caller can monitor them. SNAP rows + ST22 dumps are NOT deleted (audit trail preserved).
 - v1 supports executable programs only (TRDIR-SUBC='1'). Class methods, FMs, and module pools are out of scope.
 
 ## Tool Usage Rules

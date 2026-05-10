@@ -365,6 +365,19 @@ def _test_run_impl(
                     dump = None
             if dump is None:
                 dump = _detect_dump_in_joblog(joblog)
+
+        # Auto-delete terminal jobs (F/A/X) — leave timeout jobs alone so the
+        # caller can poll/inspect later via SM37.
+        if status_out in _STATUS_TO_OUT.values() and jobcount:
+            try:
+                conn.call(
+                    "BAPI_XBP_JOB_DELETE",
+                    JOBNAME=jobname,
+                    JOBCOUNT=jobcount,
+                    EXTERNAL_USER_NAME=user,
+                )
+            except Exception:
+                pass  # Cleanup is best-effort; never fail the whole call.
     finally:
         _xmi_logoff(conn)
         try:
